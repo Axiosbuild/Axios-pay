@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { interswitchService } from '../services/interswitch.service';
@@ -7,8 +8,15 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const kycRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.use(authenticate);
+router.use(kycRateLimit);
 
 const uploadSchema = z.object({
   documentType: z.enum(['BVN', 'NIN', 'PASSPORT', 'DRIVERS_LICENSE']),

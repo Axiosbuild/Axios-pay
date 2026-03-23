@@ -1,8 +1,16 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Router, Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
+const webhooksRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+router.use(webhooksRateLimit);
 
 function verifyPaystackSignature(payload: string, signature: string, secret: string): boolean {
   const expected = createHmac('sha512', secret).update(payload).digest('hex');
