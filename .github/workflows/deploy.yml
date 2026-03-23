@@ -1,0 +1,48 @@
+name: Deploy Axios Pay
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      REGISTRY: registry.digitalocean.com/${{ secrets.DO_REGISTRY_NAME }}
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Login to DOCR
+        run: echo "${{ secrets.DO_REGISTRY_TOKEN }}" | docker login registry.digitalocean.com -u doctl --password-stdin
+      - name: Build images
+        run: |
+          docker build -t $REGISTRY/axios-pay-api:$TAG ./backend
+          docker build -t $REGISTRY/axios-pay-web:$TAG ./apps/web
+      - name: Push images
+        run: |
+          docker push $REGISTRY/axios-pay-api:$TAG
+          docker push $REGISTRY/axios-pay-web:$TAG
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig
+          export KUBECONFIG=$PWD/kubeconfig
+          kubectl version --client
+      - name: Rolling deploy
+        run: |
+          export KUBECONFIG=$PWD/kubeconfig
+          kubectl -n axios-pay set image deployment/axios-pay-api api=$REGISTRY/axios-pay-api:$TAG
+          kubectl -n axios-pay set image deployment/axios-pay-web web=$REGISTRY/axios-pay-web:$TAG
+          kubectl -n axios-pay rollout status deployment/axios-pay-api --timeout=180s
+          kubectl -n axios-pay rollout status deployment/axios-pay-web --timeout=180s
+      - name: Health check
+        run: curl -fsS https://axiospay.africa/api/v1/health
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          export KUBECONFIG=$PWD/kubeconfig
+          kubectl -n axios-pay rollout undo deployment/axios-pay-api
+          kubectl -n axios-pay rollout undo deployment/axios-pay-web
