@@ -31,7 +31,7 @@ export default function HistoryPage() {
             <section key={day} className="glass rounded-2xl p-5">
               <h2 className="font-display text-2xl">{day}</h2>
               <div className="mt-3 space-y-2">
-                {items.map((t) => (
+                {(items as any[]).map((t) => (
                   <button key={t.id} onClick={() => setSelected(t)} className="w-full text-left bg-black/20 rounded p-3 flex justify-between">
                     <span>{t.type} · {t.status}</span>
                     <span className="amount">{t.fromCurrency} {Number(t.fromAmount).toLocaleString()}</span>

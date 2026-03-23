@@ -11,8 +11,9 @@ apiClient.interceptors.request.use(async (config) => {
     const { useAuthStore } = await import('@/store/auth');
     const token = useAuthStore.getState().accessToken;
     if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `******;
+      const headers = (config.headers || {}) as Record<string, string>;
+      headers.Authorization = `Bearer ${token}`;
+      config.headers = headers as any;
     }
   }
   return config;
@@ -36,8 +37,9 @@ apiClient.interceptors.response.use(
       try {
         const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/refresh`, { refreshToken });
         setAuth(user, res.data.accessToken, res.data.refreshToken);
-        original.headers = original.headers || {};
-        original.headers.Authorization = `******;
+        const headers = (original.headers || {}) as Record<string, string>;
+        headers.Authorization = `Bearer ${res.data.accessToken}`;
+        original.headers = headers;
         return apiClient(original);
       } catch {
         logout();

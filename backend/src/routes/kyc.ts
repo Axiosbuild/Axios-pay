@@ -17,9 +17,10 @@ const uploadSchema = z.object({
 
 router.post('/documents', upload.single('document'), async (req: AuthRequest, res: Response) => {
   try {
+    const requestWithFile = req as AuthRequest & { file?: { originalname: string; mimetype: string; size: number } };
     const { documentType, documentNumber } = uploadSchema.parse(req.body);
 
-    if (!req.file) {
+    if (!requestWithFile.file) {
       res.status(400).json({ error: 'Document file is required' });
       return;
     }
@@ -40,9 +41,9 @@ router.post('/documents', upload.single('document'), async (req: AuthRequest, re
           documentType,
           documentNumber,
           status: verified ? 'PENDING' : 'REJECTED',
-          fileName: req.file.originalname,
-          mimeType: req.file.mimetype,
-          size: req.file.size,
+          fileName: requestWithFile.file.originalname,
+          mimeType: requestWithFile.file.mimetype,
+          size: requestWithFile.file.size,
           verificationData: verificationResult,
           kycTier: tierMap[documentType],
         },
@@ -77,7 +78,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
 
 router.post('/facial-compare', upload.fields([{ name: 'selfie', maxCount: 1 }, { name: 'documentPhoto', maxCount: 1 }]), async (req: AuthRequest, res: Response) => {
   try {
-    const files = req.files as Record<string, Express.Multer.File[]>;
+    const files = (req as AuthRequest & { files?: Record<string, Array<{ buffer: Buffer }>> }).files;
     const selfie = files?.selfie?.[0];
     const documentPhoto = files?.documentPhoto?.[0];
 
