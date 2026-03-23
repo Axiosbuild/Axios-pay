@@ -14,7 +14,7 @@ export function connectRatesSocket(token?: string) {
     reconnection: true,
     reconnectionDelay: 500,
     reconnectionDelayMax: 30000,
-    randomizationFactor: 0.7,
+    randomizationFactor: 0.5,
   });
 
   socket.on('connect', () => {

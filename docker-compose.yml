@@ -4,9 +4,9 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_USER: axios
-      POSTGRES_PASSWORD: axios
-      POSTGRES_DB: axiospay
+      POSTGRES_USER: ${POSTGRES_USER:-axios}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-axios}
+      POSTGRES_DB: ${POSTGRES_DB:-axiospay}
     ports:
       - '5432:5432'
     volumes:
@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile
     environment:
       PORT: 3001
-      DATABASE_URL: ******postgres:5432/axiospay
+      DATABASE_URL: ${DATABASE_URL:-******postgres:5432/axiospay}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret
       CORS_ORIGIN: http://localhost:3000

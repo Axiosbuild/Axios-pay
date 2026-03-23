@@ -6,7 +6,8 @@ import routes from './routes';
 import { createSocketServer } from './lib/socket';
 
 const app = express();
-app.use(cors({ origin: true, credentials: true }));
+const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map((v) => v.trim()).filter(Boolean);
+app.use(cors({ origin: allowedOrigins && allowedOrigins.length ? allowedOrigins : 'http://localhost:3000', credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 app.use('/api/v1', routes);
 

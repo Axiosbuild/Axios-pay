@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AxiosRequestHeaders } from 'axios';
 
 export const apiClient = axios.create({
   baseURL: `${process.env.NEXT_PUBLIC_API_URL}/api/v1`,
@@ -11,9 +12,9 @@ apiClient.interceptors.request.use(async (config) => {
     const { useAuthStore } = await import('@/store/auth');
     const token = useAuthStore.getState().accessToken;
     if (token) {
-      const headers = (config.headers || {}) as Record<string, string>;
+      const headers = (config.headers || {}) as AxiosRequestHeaders;
       headers.Authorization = `Bearer ${token}`;
-      config.headers = headers as any;
+      config.headers = headers;
     }
   }
   return config;
@@ -37,7 +38,7 @@ apiClient.interceptors.response.use(
       try {
         const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/refresh`, { refreshToken });
         setAuth(user, res.data.accessToken, res.data.refreshToken);
-        const headers = (original.headers || {}) as Record<string, string>;
+        const headers = (original.headers || {}) as AxiosRequestHeaders;
         headers.Authorization = `Bearer ${res.data.accessToken}`;
         original.headers = headers;
         return apiClient(original);
