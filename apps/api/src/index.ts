@@ -13,9 +13,14 @@ async function start(): Promise<void> {
       await redis.connect();
       await redis.ping();
       console.log('✅ Redis connected');
-    } catch {
-      console.warn('⚠️ Redis unavailable at startup. Continuing with degraded functionality.');
-      redis.disconnect();
+    } catch (err) {
+      console.warn('⚠️ Redis unavailable at startup. Continuing with degraded functionality (OTP/reset/session-cache features may fail until Redis recovers).');
+      console.warn('Redis startup error:', err);
+      try {
+        redis.disconnect();
+      } catch (disconnectErr) {
+        console.warn('Redis disconnect cleanup error after failed startup connection:', disconnectErr);
+      }
     }
 
     app.listen(env.PORT, () => {
