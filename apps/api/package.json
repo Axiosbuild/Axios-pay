@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && prisma migrate deploy && tsc",
     "type-check": "tsc --noEmit",
     "prestart": "prisma generate",
     "start": "node dist/index.js",
