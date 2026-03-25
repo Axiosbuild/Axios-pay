@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "installCommand": "cd ../.. && npm install",
+  "buildCommand": "cd ../.. && npx turbo run build --filter=@axiospay/web",
+  "outputDirectory": ".next",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://api.axiospay.example.com"
+  }
+}
