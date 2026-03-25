@@ -23,7 +23,11 @@ const envSchema = z.object({
   INTERSWITCH_WEBHOOK_SECRET: z.string().min(1).default(generatedWebhookSecret),
   RESEND_API_KEY: z.string().min(1).default('placeholder-resend-api-key'),
   EMAIL_FROM: z.string().default('noreply@axiospay.com'),
-  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  FRONTEND_URL: z
+    .string()
+    .url()
+    .transform((value) => new URL(value).origin)
+    .default('http://localhost:3000'),
 });
 
 const result = envSchema.safeParse(process.env);
