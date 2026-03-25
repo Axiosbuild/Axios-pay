@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-amber: #C8772A;
+  --brand-gold: #E8A54B;
+  --brand-bg: #FDF3E3;
+  --navy: #1A2332;
+  --navy-medium: #2C3A50;
+  --page-bg: #F9F7F4;
+  --surface: #FFFFFF;
+  --subtle: #F2EFE9;
+  --border: #E5E1DA;
+  --success: #1A7A4A;
+  --error: #C0392B;
+  --text-primary: #1A2332;
+  --text-secondary: #5A6474;
+  --text-muted: #9AA3AE;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background-color: var(--page-bg);
+  color: var(--text-primary);
+}
+
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-ticker {
+  animation: ticker 30s linear infinite;
+}
