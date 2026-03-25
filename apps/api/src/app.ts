@@ -31,6 +31,10 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ service: 'Axios Pay API', status: 'healthy', timestamp: new Date().toISOString() });
 });
 
+app.get('/', (_req: Request, res: Response) => {
+  res.json({ service: 'Axios Pay API', status: 'running', endpoints: ['/health', '/api/v1/*'] });
+});
+
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/wallets', walletRoutes);
