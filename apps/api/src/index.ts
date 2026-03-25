@@ -9,9 +9,14 @@ async function start(): Promise<void> {
     await prisma.$queryRaw`SELECT 1`;
     console.log('✅ Database connected');
 
-    await redis.connect();
-    await redis.ping();
-    console.log('✅ Redis connected');
+    try {
+      await redis.connect();
+      await redis.ping();
+      console.log('✅ Redis connected');
+    } catch {
+      console.warn('⚠️ Redis unavailable at startup. Continuing with degraded functionality.');
+      redis.disconnect();
+    }
 
     app.listen(env.PORT, () => {
       console.log(`🚀 Axios Pay API running on port ${env.PORT}`);
