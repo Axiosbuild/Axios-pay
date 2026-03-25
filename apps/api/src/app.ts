@@ -32,7 +32,7 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 app.get('/', (_req: Request, res: Response) => {
-  res.json({ service: 'Axios Pay API', status: 'running', docs: '/health, /api/v1/*' });
+  res.json({ service: 'Axios Pay API', status: 'running', endpoints: ['/health', '/api/v1/*'] });
 });
 
 app.use('/api/v1/auth', authRoutes);
