@@ -16,6 +16,7 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   INVALID_AMOUNT: { status: 400, message: 'Invalid amount specified' },
   SAME_CURRENCY: { status: 400, message: 'Cannot swap between the same currency' },
   UNSUPPORTED_PAIR: { status: 400, message: 'This currency pair is not supported' },
+  RATES_UNAVAILABLE: { status: 503, message: 'Live rates are currently unavailable. Please try again shortly.' },
   PAYMENT_INIT_FAILED: { status: 502, message: 'Payment initiation failed. Please try again.' },
   TRANSACTION_NOT_FOUND: { status: 404, message: 'Transaction not found' },
   PIN_INVALID: { status: 400, message: 'Invalid transaction PIN' },

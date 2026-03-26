@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/ui/Card';
 import { SwapWidget } from '@/components/ui/SwapWidget';
 import { getCurrencyDisplay } from '@/lib/currencies';
+import { useRates } from '@/hooks/useRates';
 
 interface SwapResult {
   fromAmount: string;
@@ -15,6 +16,16 @@ interface SwapResult {
 export default function SwapPage() {
   const [success, setSuccess] = useState<SwapResult | null>(null);
   const queryClient = useQueryClient();
+  const { rates } = useRates();
+
+  const oldestAge = rates.length ? Math.max(...rates.map((rate) => rate.ageSeconds)) : Number.POSITIVE_INFINITY;
+  const hasFallbackRate = rates.some((rate) => rate.provider === 'database-fallback');
+
+  const freshness = hasFallbackRate
+    ? { dot: 'bg-red-500', label: 'Using last known rate' }
+    : oldestAge < 600
+      ? { dot: 'bg-green-500', label: 'Live rate' }
+      : { dot: 'bg-amber-500', label: 'Rate may be stale' };
 
   function handleSwap(result: unknown) {
     const r = result as SwapResult;
@@ -26,6 +37,10 @@ export default function SwapPage() {
   return (
     <div className="max-w-lg">
       <h1 className="font-display text-2xl font-bold text-text-primary mb-6">Currency Swap</h1>
+      <div className="mb-4 inline-flex items-center gap-2 text-sm text-text-secondary">
+        <span className={`w-2.5 h-2.5 rounded-full ${freshness.dot}`} />
+        <span>{freshness.label}</span>
+      </div>
 
       {success && (
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-card">

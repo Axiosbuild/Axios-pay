@@ -19,6 +19,9 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
   const [toCurrency, setToCurrency] = useState('UGX');
   const [fromAmount, setFromAmount] = useState('');
   const [rate, setRate] = useState<string | null>(null);
+  const [midMarketRate, setMidMarketRate] = useState<string | null>(null);
+  const [rateCountdown, setRateCountdown] = useState(60);
+  const [rateUpdatedNotice, setRateUpdatedNotice] = useState(false);
   const [loading, setLoading] = useState(false);
   const [swapping, setSwapping] = useState(false);
   const [pinModalOpen, setPinModalOpen] = useState(false);
@@ -32,9 +35,48 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
     if (fromCurrency === toCurrency) return;
     setLoading(true);
     api.rates.getRate(fromCurrency, toCurrency)
-      .then((r) => setRate(r.data.rate))
-      .catch(() => setRate(null))
+      .then((r) => {
+        const nextRate = r.data.rate as string;
+        const nextMid = r.data.midMarketRate as string;
+        if (rate) {
+          const oldRate = new Decimal(rate);
+          const newRate = new Decimal(nextRate);
+          const diff = oldRate.eq(0) ? new Decimal(0) : newRate.minus(oldRate).abs().div(oldRate);
+          if (diff.gt(0.01)) {
+            setRateUpdatedNotice(true);
+            setTimeout(() => setRateUpdatedNotice(false), 2000);
+          }
+        }
+        setRate(nextRate);
+        setMidMarketRate(nextMid);
+        setRateCountdown(60);
+      })
+      .catch(() => {
+        setRate(null);
+        setMidMarketRate(null);
+      })
       .finally(() => setLoading(false));
+  }, [fromCurrency, toCurrency]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRateCountdown((prev) => {
+        if (prev <= 1) {
+          if (fromCurrency !== toCurrency) {
+            setLoading(true);
+            api.rates.getRate(fromCurrency, toCurrency)
+              .then((r) => {
+                setRate(r.data.rate as string);
+                setMidMarketRate(r.data.midMarketRate as string);
+              })
+              .finally(() => setLoading(false));
+          }
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
   }, [fromCurrency, toCurrency]);
 
   async function executeSwap(pinToken: string) {
@@ -119,6 +161,19 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
             <span>Rate</span>
             <span className="font-mono">{loading ? '...' : `1 ${getCurrencyDisplay(fromCurrency)} = ${rate} ${getCurrencyDisplay(toCurrency)}`}</span>
           </div>
+          {midMarketRate && (
+            <div className="flex justify-between text-text-muted">
+              <span>Mid-market rate</span>
+              <span className="font-mono">{`1 ${getCurrencyDisplay(fromCurrency)} = ${midMarketRate} ${getCurrencyDisplay(toCurrency)}`}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-text-muted">
+            <span>Rate valid for</span>
+            <span className="font-mono">{rateCountdown}s</span>
+          </div>
+          {rateUpdatedNotice && (
+            <div className="text-xs text-amber-700">Rate updated</div>
+          )}
           <div className="flex justify-between text-text-secondary">
             <span>Axios Pay fee (1.5%)</span>
             <span className="font-mono">{fee} {getCurrencyDisplay(fromCurrency)}</span>
