@@ -1,4 +1,5 @@
 import { ArrowDownLeft, ArrowUpRight, RefreshCw } from 'lucide-react';
+import { getCurrencyDisplay } from '@/lib/currencies';
 import { Badge } from './Badge';
 
 const TYPE_ICONS = {
@@ -32,13 +33,13 @@ export function TransactionRow({ tx }: { tx: Transaction }) {
         <p className="text-sm font-medium text-text-primary truncate">{tx.narration || tx.type}</p>
         <p className="text-xs text-text-muted">{date}</p>
       </div>
-      <div className="text-right flex-shrink-0">
+        <div className="text-right flex-shrink-0">
         <p className="text-sm font-mono font-medium text-text-primary">
-          {fmt(tx.fromAmount)} {tx.fromCurrency}
-          {tx.fromCurrency !== tx.toCurrency && ` → ${fmt(tx.toAmount)} ${tx.toCurrency}`}
+          {fmt(tx.fromAmount)} {getCurrencyDisplay(tx.fromCurrency)}
+          {tx.fromCurrency !== tx.toCurrency && ` → ${fmt(tx.toAmount)} ${getCurrencyDisplay(tx.toCurrency)}`}
         </p>
-        <Badge status={tx.status} />
-      </div>
+          <Badge status={tx.status} />
+        </div>
     </div>
   );
 }

@@ -1,18 +1,11 @@
 import Link from 'next/link';
 import { Navbar } from '@/components/ui/Navbar';
 import { RatesTicker } from '@/components/ui/RatesTicker';
+import { RatesGrid } from '@/components/ui/RatesGrid';
+import { getCurrencyDisplay } from '@/lib/currencies';
 import { ArrowRight, Globe, TrendingUp, Zap } from 'lucide-react';
 
 export default function LandingPage() {
-  const corridors = [
-    { from: '🇳🇬 NGN', to: '🇺🇬 UGX', rate: '10.85' },
-    { from: '🇳🇬 NGN', to: '🇰🇪 KES', rate: '0.29' },
-    { from: '🇳🇬 NGN', to: '🇬🇭 GHS', rate: '0.021' },
-    { from: '🇳🇬 NGN', to: '🇿🇦 ZAR', rate: '0.052' },
-    { from: '🇺🇬 UGX', to: '🇰🇪 KES', rate: '0.027' },
-    { from: '🇰🇪 KES', to: '🇬🇭 GHS', rate: '0.072' },
-  ];
-
   return (
     <div className="min-h-screen bg-page">
       <Navbar />
@@ -54,7 +47,7 @@ export default function LandingPage() {
               <div className="bg-subtle rounded-btn p-4">
                 <p className="text-xs text-text-muted mb-1">You send</p>
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-text-primary">🇳🇬 NGN</span>
+                  <span className="font-semibold text-text-primary">{getCurrencyDisplay('NGN')}</span>
                   <span className="font-mono text-2xl text-text-primary">10,000</span>
                 </div>
               </div>
@@ -62,7 +55,7 @@ export default function LandingPage() {
               <div className="bg-brand-bg rounded-btn p-4 border border-brand-amber/30">
                 <p className="text-xs text-text-muted mb-1">You receive</p>
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-text-primary">🇺🇬 UGX</span>
+                  <span className="font-semibold text-text-primary">{getCurrencyDisplay('UGX')}</span>
                   <span className="font-mono text-2xl text-text-primary">106,882</span>
                 </div>
               </div>
@@ -111,20 +104,7 @@ export default function LandingPage() {
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">Supported Corridors</h2>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {corridors.map(({ from, to, rate }) => (
-              <div key={`${from}-${to}`} className="bg-surface rounded-card border border-border p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-text-primary">{from} → {to}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="w-1.5 h-1.5 bg-success rounded-full" />
-                    <span className="text-xs text-success">Live</span>
-                  </div>
-                </div>
-                <p className="font-mono text-lg font-semibold text-brand-amber">{rate}</p>
-              </div>
-            ))}
-          </div>
+          <RatesGrid />
         </div>
       </section>
 

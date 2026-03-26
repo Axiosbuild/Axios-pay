@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/ui/Card';
 import { SwapWidget } from '@/components/ui/SwapWidget';
+import { getCurrencyDisplay } from '@/lib/currencies';
 
 interface SwapResult {
   fromAmount: string;
@@ -30,7 +31,7 @@ export default function SwapPage() {
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-card">
           <p className="text-success font-semibold">✅ Swap successful!</p>
           <p className="text-sm text-text-secondary mt-1">
-            {success.fromAmount} {success.fromCurrency} → {success.toAmount} {success.toCurrency}
+            {success.fromAmount} {getCurrencyDisplay(success.fromCurrency)} → {success.toAmount} {getCurrencyDisplay(success.toCurrency)}
           </p>
           <button onClick={() => setSuccess(null)} className="text-sm text-text-muted hover:text-text-primary mt-2">
             Make another swap
