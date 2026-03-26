@@ -1,11 +1,19 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 
-const resend = new Resend(env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  auth: {
+    user: env.SMTP_USER,
+    pass: env.SMTP_PASS,
+  },
+});
 
 export async function sendEmailOTP(to: string, firstName: string, otp: string): Promise<void> {
-  await resend.emails.send({
-    from: env.EMAIL_FROM,
+  await transporter.sendMail({
+    from: `"Axios Pay" <${env.SMTP_USER}>`,
     to,
     subject: 'Verify your Axios Pay email',
     html: `
@@ -24,8 +32,8 @@ export async function sendEmailOTP(to: string, firstName: string, otp: string): 
 }
 
 export async function sendWelcomeEmail(to: string, firstName: string): Promise<void> {
-  await resend.emails.send({
-    from: env.EMAIL_FROM,
+  await transporter.sendMail({
+    from: `"Axios Pay" <${env.SMTP_USER}>`,
     to,
     subject: 'Welcome to Axios Pay 🎉',
     html: `
@@ -45,8 +53,8 @@ export async function sendWelcomeEmail(to: string, firstName: string): Promise<v
 }
 
 export async function sendPasswordResetOTP(to: string, firstName: string, otp: string): Promise<void> {
-  await resend.emails.send({
-    from: env.EMAIL_FROM,
+  await transporter.sendMail({
+    from: `"Axios Pay" <${env.SMTP_USER}>`,
     to,
     subject: 'Reset your Axios Pay password',
     html: `
