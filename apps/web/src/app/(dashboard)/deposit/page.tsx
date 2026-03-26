@@ -32,7 +32,13 @@ export default function DepositPage() {
     setError('');
     try {
       const result = await api.wallets.fund(data);
-      window.location.href = result.data.paymentUrl;
+      const paymentUrl = result.data?.paymentUrl;
+      if (paymentUrl) {
+        window.location.href = paymentUrl;
+        return;
+      }
+
+      setError('Payment link unavailable. Please try again.');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
       setError(e?.response?.data?.message || 'Failed to initiate payment.');
