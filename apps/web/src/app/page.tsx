@@ -16,7 +16,7 @@ export default function LandingPage() {
           <div>
             <div className="inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1.5 mb-6">
               <span className="w-2 h-2 bg-success rounded-full animate-pulse" />
-              <span className="text-sm text-white/80">Live rates updated every 2 hours</span>
+              <span className="text-sm text-white/80">Live rates updated every 10 minutes</span>
             </div>
             <h1 className="font-display text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
               Cross-Border FX,{' '}
@@ -51,7 +51,7 @@ export default function LandingPage() {
                   <span className="font-mono text-2xl text-text-primary">10,000</span>
                 </div>
               </div>
-              <div className="text-center text-text-muted text-sm">↕ 1 NGN = 10.85 UGX</div>
+              <div className="text-center text-text-muted text-sm">↕ Live rate stream active</div>
               <div className="bg-brand-bg rounded-btn p-4 border border-brand-amber/30">
                 <p className="text-xs text-text-muted mb-1">You receive</p>
                 <div className="flex items-center justify-between">

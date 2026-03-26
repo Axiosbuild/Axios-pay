@@ -101,3 +101,22 @@ export async function sendLoginNotificationEmail(
     `,
   });
 }
+
+export async function sendRateProvidersOutageEmail(to: string, failureDetails: string): Promise<void> {
+  await transporter.sendMail({
+    from: `"Axios Pay" <${env.SMTP_USER}>`,
+    to,
+    subject: 'Axios Pay rates provider outage alert',
+    html: `
+      <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="color: #1A2332; font-family: Playfair Display, serif;">Axios Pay</h1>
+        <h2 style="color: #1A2332;">Rates provider outage detected</h2>
+        <p style="color: #5A6474;">All live FX provider attempts failed during refresh.</p>
+        <div style="background: #FDF3E3; border: 1px solid #E5E1DA; border-radius: 12px; padding: 16px; margin: 24px 0;">
+          <pre style="white-space: pre-wrap; margin: 0; color: #1A2332; font-family: JetBrains Mono, monospace;">${failureDetails}</pre>
+        </div>
+        <p style="color: #9AA3AE; font-size: 12px; margin-top: 20px;">Axios Pay — Cross-Border FX, Unlocked.</p>
+      </div>
+    `,
+  });
+}

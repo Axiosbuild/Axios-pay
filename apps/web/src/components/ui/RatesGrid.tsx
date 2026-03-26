@@ -10,7 +10,7 @@ interface RateRow {
 }
 
 interface RatesResponse {
-  rates?: Array<{ fromCurrency: string; toCurrency: string; rate: string }>;
+  rates?: Array<{ fromCurrency: string; toCurrency: string; rate: string; provider?: string; fetchedAt?: string }>;
 }
 
 export function RatesGrid() {
@@ -48,10 +48,10 @@ export function RatesGrid() {
             </div>
             <span className="inline-flex items-center gap-1 mt-0.5">
               <span className="w-1.5 h-1.5 bg-success rounded-full" />
-              <span className="text-xs text-success font-medium">Live</span>
-            </span>
-          </div>
-          <p className="font-mono text-2xl font-bold text-brand-amber mt-4">{row.rate}</p>
+                <span className="text-xs text-success font-medium">Live</span>
+              </span>
+            </div>
+            <p className="font-mono text-2xl font-bold text-brand-amber mt-4">{row.rate}</p>
         </div>
       ))}
     </div>

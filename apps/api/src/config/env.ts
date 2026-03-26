@@ -34,6 +34,9 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z.string().min(32).default(crypto.randomBytes(32).toString('hex')),
   CRON_ENABLED: z.coerce.boolean().default(true),
   ADMIN_EMAIL: z.string().email().default('admin@example.com'),
+  EXCHANGE_RATE_API_KEY: z.string().optional(),
+  RATE_REFRESH_INTERVAL_MS: z.coerce.number().default(600000),
+  RATE_SPREAD_PERCENT: z.coerce.number().default(0.3),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -60,6 +63,7 @@ const defaultedKeys = [
   'SMTP_PASS',
   'ENCRYPTION_KEY',
   'ADMIN_EMAIL',
+  'EXCHANGE_RATE_API_KEY',
 ] as const;
 
 const missingKeys = defaultedKeys.filter((key) => !process.env[key]);

@@ -141,6 +141,8 @@ export const api = {
   rates: {
     getAll: () => apiClient.get('/rates'),
     getRate: (from: string, to: string) => apiClient.get(`/rates/${from}/${to}`),
+    getHealth: () => apiClient.get('/rates/health'),
+    refreshAll: () => apiClient.post('/rates/refresh'),
   },
   pin: {
     set: (data: unknown) => apiClient.post('/pin/set', data),
