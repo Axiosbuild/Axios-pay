@@ -3,15 +3,10 @@ import { useState, useEffect } from 'react';
 import { ArrowLeftRight } from 'lucide-react';
 import Decimal from 'decimal.js';
 import { api } from '@/lib/api';
+import { CURRENCY_META, CurrencyCode, getCurrencyDisplay } from '@/lib/currencies';
 import { Button } from './Button';
 
-const CURRENCIES = [
-  { code: 'NGN', flag: '🇳🇬', name: 'Nigerian Naira' },
-  { code: 'UGX', flag: '🇺🇬', name: 'Ugandan Shilling' },
-  { code: 'KES', flag: '🇰🇪', name: 'Kenyan Shilling' },
-  { code: 'GHS', flag: '🇬🇭', name: 'Ghanaian Cedi' },
-  { code: 'ZAR', flag: '🇿🇦', name: 'South African Rand' },
-];
+const CURRENCIES = Object.keys(CURRENCY_META) as CurrencyCode[];
 
 interface SwapWidgetProps {
   onSwap?: (result: unknown) => void;
@@ -71,7 +66,7 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
               className="border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
             >
               {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                <option key={c} value={c}>{getCurrencyDisplay(c)}</option>
               ))}
             </select>
             <input
@@ -97,7 +92,7 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
               className="border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
             >
               {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                <option key={c} value={c}>{getCurrencyDisplay(c)}</option>
               ))}
             </select>
             <div className="flex-1 border border-border rounded-btn px-3 py-2.5 text-sm bg-subtle font-mono text-text-primary">
@@ -111,15 +106,15 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
         <div className="bg-brand-bg rounded-btn p-3 text-sm space-y-1">
           <div className="flex justify-between text-text-secondary">
             <span>Rate</span>
-            <span className="font-mono">{loading ? '...' : `1 ${fromCurrency} = ${rate} ${toCurrency}`}</span>
+            <span className="font-mono">{loading ? '...' : `1 ${getCurrencyDisplay(fromCurrency)} = ${rate} ${getCurrencyDisplay(toCurrency)}`}</span>
           </div>
           <div className="flex justify-between text-text-secondary">
             <span>Axios Pay fee (1.5%)</span>
-            <span className="font-mono">{fee} {fromCurrency}</span>
+            <span className="font-mono">{fee} {getCurrencyDisplay(fromCurrency)}</span>
           </div>
           <div className="flex justify-between font-semibold text-text-primary border-t border-border pt-1 mt-1">
             <span>You receive</span>
-            <span className="font-mono">{toAmount} {toCurrency}</span>
+            <span className="font-mono">{toAmount} {getCurrencyDisplay(toCurrency)}</span>
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import { WalletCard } from '@/components/ui/WalletCard';
 import { TransactionRow } from '@/components/ui/TransactionRow';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
+import { RatesGrid } from '@/components/ui/RatesGrid';
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -84,7 +85,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent transactions */}
-      <div>
+      <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">Recent Transactions</h2>
           <Link href="/wallet" className="text-sm text-brand-amber hover:underline">View all</Link>
@@ -100,6 +101,11 @@ export default function DashboardPage() {
             <p className="text-text-muted text-sm text-center py-4">No transactions yet.</p>
           )}
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-4">Live Corridor Rates</h2>
+        <RatesGrid />
       </div>
     </div>
   );

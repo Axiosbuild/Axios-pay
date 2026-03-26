@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { NATIONALITY_TO_DIAL_CODE, PHONE_COUNTRY_OPTIONS } from '@/lib/currencies';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -18,7 +19,8 @@ const step1Schema = z.object({
 });
 
 const step2Schema = z.object({
-  phone: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Enter phone in E.164 format e.g. +2348012345678'),
+  countryCode: z.string().min(1, 'Select country code'),
+  localPhone: z.string().regex(/^\d{6,14}$/, 'Enter a valid local phone number'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
@@ -33,19 +35,29 @@ export default function RegisterPage() {
   const router = useRouter();
 
   const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema) });
-  const form2 = useForm<Step2>({ resolver: zodResolver(step2Schema) });
+  const form2 = useForm<Step2>({
+    resolver: zodResolver(step2Schema),
+    defaultValues: { countryCode: '+234', localPhone: '' },
+  });
 
   async function onStep1(data: Step1) {
     setStep1Data(data);
+    form2.setValue('countryCode', NATIONALITY_TO_DIAL_CODE[data.nationality]);
     setStep(2);
   }
 
   async function onStep2(data: Step2) {
     if (!step1Data) return;
+    const localPhone = data.localPhone.replace(/\D/g, '').replace(/^0+/, '');
+    const phone = `${data.countryCode}${localPhone}`;
     setLoading(true);
     setError('');
     try {
-      const result = await api.auth.register({ ...step1Data, ...data });
+      const result = await api.auth.register({
+        ...step1Data,
+        phone,
+        password: data.password,
+      });
       localStorage.setItem('axiospay_pending_userId', result.data.userId);
       router.push('/verify-email');
     } catch (err: unknown) {
@@ -106,7 +118,34 @@ export default function RegisterPage() {
         </form>
       ) : (
         <form onSubmit={form2.handleSubmit(onStep2)} className="space-y-4">
-          <Input label="Phone Number" type="tel" placeholder="+2348012345678" {...form2.register('phone')} error={form2.formState.errors.phone?.message} />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-text-primary">Phone Number</label>
+            <div className="flex gap-2">
+              <select
+                {...form2.register('countryCode')}
+                className="w-40 px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber text-text-primary"
+              >
+                {PHONE_COUNTRY_OPTIONS.map((option) => (
+                  <option key={option.nationality} value={option.dialCode}>
+                    {option.flag} {option.dialCode}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="tel"
+                inputMode="numeric"
+                placeholder="8012345678"
+                {...form2.register('localPhone')}
+                className="flex-1 px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber text-text-primary"
+              />
+            </div>
+            {form2.formState.errors.countryCode && (
+              <p className="text-sm text-error">{form2.formState.errors.countryCode.message}</p>
+            )}
+            {form2.formState.errors.localPhone && (
+              <p className="text-sm text-error">{form2.formState.errors.localPhone.message}</p>
+            )}
+          </div>
           <Input label="Password" type="password" {...form2.register('password')} error={form2.formState.errors.password?.message} />
           <p className="text-xs text-text-muted">Must be at least 8 characters.</p>
           <Button type="submit" loading={loading} className="w-full">Create Account</Button>
