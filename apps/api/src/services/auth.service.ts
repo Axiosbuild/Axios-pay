@@ -6,6 +6,7 @@ import { redis } from '../config/redis';
 import { env } from '../config/env';
 import { generateOTP, storeOTP, verifyOTP } from './otp.service';
 import { sendEmailOTP, sendWelcomeEmail, sendPasswordResetOTP } from './email.service';
+import { sendPhoneOTP } from './sms.service';
 
 const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
   NG: 'NGN',
@@ -68,9 +69,7 @@ export async function register(input: RegisterInput): Promise<{ userId: string; 
 
   await sendEmailOTP(user.email, user.firstName, emailOTP);
 
-  if (env.NODE_ENV === 'development') {
-    console.log(`[DEV] Phone OTP for ${user.phone}: ${phoneOTP}`);
-  }
+  await sendPhoneOTP(user.phone, phoneOTP);
 
   return { userId: user.id, message: 'Registration successful. Please verify your email.' };
 }
@@ -90,9 +89,7 @@ export async function verifyEmail(userId: string, otp: string): Promise<{ verifi
   const phoneOTP = generateOTP();
   await storeOTP(`phone:${userId}`, phoneOTP, PHONE_OTP_TTL);
 
-  if (env.NODE_ENV === 'development') {
-    console.log(`[DEV] Phone OTP for ${user.phone}: ${phoneOTP}`);
-  }
+  await sendPhoneOTP(user.phone, phoneOTP);
 
   return { verified: true };
 }

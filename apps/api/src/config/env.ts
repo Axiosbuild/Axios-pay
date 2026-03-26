@@ -23,6 +23,9 @@ const envSchema = z.object({
   INTERSWITCH_WEBHOOK_SECRET: z.string().min(1).default(generatedWebhookSecret),
   SMTP_USER: z.string().email().default('axiosbuild@gmail.com'),
   SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
+  TWILIO_ACCOUNT_SID: z.string().min(1).default('placeholder-twilio-sid'),
+  TWILIO_AUTH_TOKEN: z.string().min(1).default('placeholder-twilio-token'),
+  TWILIO_PHONE_NUMBER: z.string().min(1).default('placeholder-twilio-number'),
   FRONTEND_URL: z
     .string()
     .url()
