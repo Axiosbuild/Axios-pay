@@ -43,7 +43,7 @@ export async function fundWallet(
     },
   });
 
-  const redirectUrl = `${env.FRONTEND_URL}/dashboard/deposit/callback?ref=${txRef}`;
+  const redirectUrl = 'https://axioslast-web.vercel.app/deposit/callback';
 
   const paymentUrl = await initiatePayment({
     txRef,

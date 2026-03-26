@@ -70,14 +70,23 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<st
       }
     );
 
-    return response.data.redirectUrl || buildWebpayUrl(params.txRef, params.amount);
+    const paymentCode = response.data?.paymentCode;
+    if (paymentCode) {
+      return buildQuicktellerUrl(paymentCode);
+    }
+
+    return buildQuicktellerFallbackUrl();
   } catch {
-    return buildWebpayUrl(params.txRef, params.amount);
+    return buildQuicktellerFallbackUrl();
   }
 }
 
-function buildWebpayUrl(txRef: string, amountInKobo: number): string {
-  return `https://webpay.interswitchng.com/collections/w/pay?code=${env.INTERSWITCH_MERCHANT_CODE}&amount=${amountInKobo}&txnref=${txRef}&others=ST_0`;
+function buildQuicktellerUrl(paymentCode: string): string {
+  return `https://qa.interswitchng.com/paymentgateway/link/pay/${paymentCode}`;
+}
+
+function buildQuicktellerFallbackUrl(): string {
+  return `https://qa.interswitchng.com/paymentgateway/link/pay/${env.INTERSWITCH_PAY_ITEM_ID}`;
 }
 
 export async function queryTransaction(txRef: string, amountInKobo: number): Promise<{
