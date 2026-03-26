@@ -21,8 +21,8 @@ const envSchema = z.object({
   INTERSWITCH_MERCHANT_CODE: z.string().min(1).default('placeholder-merchant-code'),
   INTERSWITCH_PAY_ITEM_ID: z.string().min(1).default('placeholder-pay-item-id'),
   INTERSWITCH_WEBHOOK_SECRET: z.string().min(1).default(generatedWebhookSecret),
-  RESEND_API_KEY: z.string().min(1).default('placeholder-resend-api-key'),
-  EMAIL_FROM: z.string().default('noreply@axiospay.com'),
+  SMTP_USER: z.string().email().default('axiosbuild@gmail.com'),
+  SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
   FRONTEND_URL: z
     .string()
     .url()
@@ -31,7 +31,6 @@ const envSchema = z.object({
 });
 
 const result = envSchema.safeParse(process.env);
-
 if (!result.success) {
   console.error('❌ Invalid environment variables:');
   const errors = result.error.flatten().fieldErrors;
@@ -52,7 +51,7 @@ const defaultedKeys = [
   'INTERSWITCH_MERCHANT_CODE',
   'INTERSWITCH_PAY_ITEM_ID',
   'INTERSWITCH_WEBHOOK_SECRET',
-  'RESEND_API_KEY',
+  'SMTP_PASS',
 ] as const;
 
 const missingKeys = defaultedKeys.filter((key) => !process.env[key]);
