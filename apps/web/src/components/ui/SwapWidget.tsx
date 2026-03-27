@@ -12,9 +12,10 @@ const CURRENCIES = Object.keys(CURRENCY_META) as CurrencyCode[];
 interface SwapWidgetProps {
   onSwap?: (result: unknown) => void;
   compact?: boolean;
+  mobileStickyAction?: boolean;
 }
 
-export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
+export function SwapWidget({ onSwap, compact, mobileStickyAction = false }: SwapWidgetProps) {
   const [fromCurrency, setFromCurrency] = useState('NGN');
   const [toCurrency, setToCurrency] = useState('UGX');
   const [fromAmount, setFromAmount] = useState('');
@@ -108,15 +109,15 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
   }
 
   return (
-    <div className={`space-y-4 ${compact ? '' : 'bg-surface rounded-card border border-border p-6'}`}>
+    <div className={`space-y-4 ${compact ? '' : 'bg-surface rounded-card border border-border p-4 sm:p-6'} ${mobileStickyAction ? 'pb-24 md:pb-6' : ''}`}>
       <div className="space-y-3">
         <div>
           <label className="text-xs font-medium text-text-muted uppercase tracking-wide">You send</label>
-          <div className="flex gap-2 mt-1">
+          <div className="flex flex-col sm:flex-row gap-2 mt-1">
             <select
               value={fromCurrency}
               onChange={(e) => setFromCurrency(e.target.value)}
-              className="border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
+              className="w-full sm:w-auto border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
             >
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>{getCurrencyDisplay(c)}</option>
@@ -127,7 +128,7 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
               value={fromAmount}
               onChange={(e) => setFromAmount(e.target.value)}
               placeholder="0.00"
-              className="flex-1 border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber font-mono"
+              className="w-full flex-1 border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber font-mono"
             />
           </div>
         </div>
@@ -138,11 +139,11 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
 
         <div>
           <label className="text-xs font-medium text-text-muted uppercase tracking-wide">You receive</label>
-          <div className="flex gap-2 mt-1">
+          <div className="flex flex-col sm:flex-row gap-2 mt-1">
             <select
               value={toCurrency}
               onChange={(e) => setToCurrency(e.target.value)}
-              className="border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
+              className="w-full sm:w-auto border border-border rounded-btn px-3 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
             >
               {CURRENCIES.map((c) => (
                 <option key={c} value={c}>{getCurrencyDisplay(c)}</option>
@@ -185,14 +186,16 @@ export function SwapWidget({ onSwap, compact }: SwapWidgetProps) {
         </div>
       )}
 
-      <Button
-        onClick={handleSwap}
-        loading={swapping}
-        disabled={!fromAmount || !rate || fromCurrency === toCurrency}
-        className="w-full"
-      >
-        Swap Now
-      </Button>
+      <div className={`${mobileStickyAction ? 'fixed md:static bottom-16 left-0 right-0 p-4 md:p-0 bg-page/95 md:bg-transparent border-t border-border md:border-0 z-10' : ''}`}>
+        <Button
+          onClick={handleSwap}
+          loading={swapping}
+          disabled={!fromAmount || !rate || fromCurrency === toCurrency}
+          className="w-full min-h-11"
+        >
+          Swap Now
+        </Button>
+      </div>
 
       <PINVerifyModal
         open={pinModalOpen}

@@ -35,8 +35,8 @@ export default function SwapPage() {
   }
 
   return (
-    <div className="max-w-lg">
-      <h1 className="font-display text-2xl font-bold text-text-primary mb-6">Currency Swap</h1>
+    <div className="max-w-lg w-full">
+      <h1 className="font-display text-[clamp(1.5rem,4vw,2.5rem)] font-bold text-text-primary mb-6">Currency Swap</h1>
       <div className="mb-4 inline-flex items-center gap-2 text-sm text-text-secondary">
         <span className={`w-2.5 h-2.5 rounded-full ${freshness.dot}`} />
         <span>{freshness.label}</span>
@@ -55,7 +55,7 @@ export default function SwapPage() {
       )}
 
       <Card>
-        <SwapWidget onSwap={handleSwap} />
+        <SwapWidget onSwap={handleSwap} mobileStickyAction />
       </Card>
     </div>
   );

@@ -28,7 +28,7 @@ export function Input({ label, error, type, className = '', ...props }: InputPro
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+            className="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 flex items-center justify-center text-text-muted hover:text-text-secondary transition-all duration-200"
           >
             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>

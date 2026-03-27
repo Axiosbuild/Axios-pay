@@ -48,8 +48,25 @@ export default function DepositPage() {
   }
 
   return (
-    <div className="max-w-lg">
-      <h1 className="font-display text-2xl font-bold text-text-primary mb-6">Fund Wallet</h1>
+    <div className="max-w-lg w-full">
+      <h1 className="font-display text-[clamp(1.5rem,4vw,2.5rem)] font-bold text-text-primary mb-6">Fund Wallet</h1>
+
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        {['Card Transfer', 'Bank Transfer', 'USSD', 'Mobile Money'].map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className="px-4 py-2 min-h-11 rounded-full text-sm whitespace-nowrap bg-subtle text-text-secondary transition-all duration-200 hover:bg-border"
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      <div className="mb-6 bg-surface border border-border rounded-card p-4">
+        <p className="text-sm font-semibold text-text-primary mb-1">Bank account details</p>
+        <p className="text-sm text-text-secondary">Supported providers and payment details are shown after you proceed to payment.</p>
+      </div>
 
       <Card>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -59,7 +76,7 @@ export default function DepositPage() {
             <label className="text-sm font-medium text-text-primary">Currency</label>
             <select
               {...register('currency')}
-              className="w-full px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
+              className="w-full min-h-11 px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
             >
               <option value="NGN">🇳🇬 Nigerian Naira (NGN)</option>
               <option value="UGX">🇺🇬 Ugandan Shilling (UGX)</option>

@@ -103,25 +103,31 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <h1 className="font-display text-2xl font-bold text-text-primary">Profile</h1>
+      <h1 className="font-display text-[clamp(1.5rem,4vw,2.5rem)] font-bold text-text-primary">Profile</h1>
+
+      <div className="flex justify-center">
+        <div className="w-20 h-20 rounded-full bg-brand-bg border border-brand-amber/30 text-brand-amber font-display text-2xl flex items-center justify-center">
+          {(user?.firstName?.[0] || 'U').toUpperCase()}
+        </div>
+      </div>
 
       {/* Account info */}
       <Card>
         <h2 className="font-semibold text-text-primary mb-4">Account Details</h2>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between">
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
             <span className="text-text-muted">Email</span>
             <span className="text-text-primary">{user?.email}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
             <span className="text-text-muted">Phone</span>
             <span className="text-text-primary">{user?.phone}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
             <span className="text-text-muted">Country</span>
             <span className="text-text-primary">{NATIONALITY_NAMES[user?.nationality || ''] || user?.nationality}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
             <span className="text-text-muted">Member since</span>
             <span className="text-text-primary">{user ? new Date(user.createdAt || Date.now()).toLocaleDateString() : '—'}</span>
           </div>
@@ -144,7 +150,7 @@ export default function ProfilePage() {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input label="First Name" {...register('firstName')} error={errors.firstName?.message} />
           <Input label="Last Name" {...register('lastName')} error={errors.lastName?.message} />
-          <Button type="submit" loading={loading}>Save Changes</Button>
+          <Button type="submit" loading={loading} className="w-full">Save Changes</Button>
         </form>
       </Card>
 
@@ -159,7 +165,7 @@ export default function ProfilePage() {
             <p className="text-sm text-text-secondary mb-2">New PIN</p>
             <PINInput value={pinState.newPin} onChange={(v) => setPinState((s) => ({ ...s, newPin: v }))} />
           </div>
-          <Button onClick={handleChangePin} disabled={pinState.currentPin.length !== 4 || pinState.newPin.length !== 4}>
+          <Button onClick={handleChangePin} className="w-full" disabled={pinState.currentPin.length !== 4 || pinState.newPin.length !== 4}>
             Change PIN
           </Button>
         </div>
@@ -176,7 +182,7 @@ export default function ProfilePage() {
             value={limit}
             onChange={(e) => setLimit(e.target.value)}
           />
-          <Button onClick={handleUpdateLimit}>Update Limit</Button>
+          <Button onClick={handleUpdateLimit} className="w-full">Update Limit</Button>
         </div>
       </Card>
 
@@ -189,15 +195,15 @@ export default function ProfilePage() {
           <div className="space-y-3">
             <p className="text-sm text-text-secondary">Enter transaction PIN to freeze:</p>
             <PINInput value={freezePin} onChange={setFreezePin} />
-            <Button variant="danger" onClick={handleFreeze} disabled={freezePin.length !== 4}>
+            <Button variant="danger" onClick={handleFreeze} className="w-full" disabled={freezePin.length !== 4}>
               Freeze Account
             </Button>
           </div>
         ) : (
           <div className="space-y-3">
-            <Button onClick={handleRequestUnfreezeOtp}>Send Unfreeze OTP</Button>
+            <Button onClick={handleRequestUnfreezeOtp} className="w-full">Send Unfreeze OTP</Button>
             <Input label="Email OTP" value={unfreezeOtp} onChange={(e) => setUnfreezeOtp(e.target.value)} />
-            <Button onClick={handleUnfreeze} disabled={unfreezeOtp.length !== 6}>Unfreeze Account</Button>
+            <Button onClick={handleUnfreeze} className="w-full" disabled={unfreezeOtp.length !== 6}>Unfreeze Account</Button>
           </div>
         )}
       </Card>
