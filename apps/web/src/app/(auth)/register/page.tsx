@@ -72,8 +72,17 @@ export default function RegisterPage() {
         phone,
         password: data.password,
       });
-      localStorage.setItem('axiospay_pending_userId', result.data.userId);
-      router.replace('/verify-email');
+      const userId = result.data?.userId as string | undefined;
+      if (!userId) {
+        setError('Registration failed. Please try again.');
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('verify_userId', userId);
+        sessionStorage.setItem('verify_email', step1Data.email);
+      }
+      router.push(`/verify-email?userId=${encodeURIComponent(userId)}`);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
       const code = e?.response?.data?.error || '';

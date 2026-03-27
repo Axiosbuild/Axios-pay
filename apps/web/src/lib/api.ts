@@ -111,6 +111,8 @@ export const api = {
   auth: {
     register: (data: unknown) => apiClient.post('/auth/register', data),
     verifyEmail: (data: unknown) => apiClient.post('/auth/verify-email', data),
+    verifyEmailLink: (token: string, userId: string) =>
+      apiClient.get('/auth/verify-email-link', { params: { token, userId } }),
     verifyPhone: (data: unknown) => apiClient.post('/auth/verify-phone', data),
     login: (data: unknown) => apiClient.post('/auth/login', data),
     refresh: (data: unknown) => apiClient.post('/auth/refresh', data),
