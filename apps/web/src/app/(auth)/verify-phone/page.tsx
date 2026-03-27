@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { OTPInput } from '@/components/ui/OTPInput';
 import { Button } from '@/components/ui/Button';
@@ -11,25 +11,41 @@ export default function VerifyPhonePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const userIdFromUrl = searchParams.get('userId');
+  const userIdFromStorage = typeof window !== 'undefined' ? sessionStorage.getItem('verify_userId') : null;
+  const userId = userIdFromUrl || userIdFromStorage;
 
   useEffect(() => {
-    if (otp.length === 6) handleVerify();
+    if (userIdFromUrl && typeof window !== 'undefined') {
+      sessionStorage.setItem('verify_userId', userIdFromUrl);
+    }
+  }, [userIdFromUrl]);
+
+  useEffect(() => {
+    if (otp.length === 6 && userId) handleVerify();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otp]);
+  }, [otp, userId]);
 
   async function handleVerify() {
-    const userId = localStorage.getItem('axiospay_pending_userId');
-    if (!userId) { router.push('/register'); return; }
+    if (!userId) {
+      router.push('/verify-email');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
       await api.auth.verifyPhone({ userId, otp });
-      localStorage.removeItem('axiospay_pending_userId');
-      router.push('/login?verified=1');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('verify_userId');
+        sessionStorage.removeItem('verify_email');
+      }
+      router.push('/login?verified=true');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       const code = e?.response?.data?.error || '';
-      setError(code === 'OTP_EXPIRED' ? 'Code expired.' : 'Invalid code.');
+      setError(code === 'OTP_EXPIRED' ? 'Your code has expired.' : 'Invalid code.');
       setOtp('');
     } finally {
       setLoading(false);

@@ -11,6 +11,7 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   SESSION_EXPIRED: { status: 401, message: 'Your session has expired. Please log in again.' },
   USER_NOT_FOUND: { status: 404, message: 'User not found' },
   EMAIL_ALREADY_VERIFIED: { status: 400, message: 'Email is already verified' },
+  INVALID_TOKEN: { status: 400, message: 'Verification link is invalid or expired. Please request a new one.' },
   INSUFFICIENT_BALANCE: { status: 400, message: 'Insufficient balance for this transaction' },
   WALLET_NOT_FOUND: { status: 404, message: 'Wallet not found' },
   INVALID_AMOUNT: { status: 400, message: 'Invalid amount specified' },

@@ -42,6 +42,12 @@ const resetPasswordSchema = z.object({
 });
 
 const resendOTPSchema = z.object({
+  userId: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+});
+
+const verifyEmailLinkSchema = z.object({
+  token: z.string().min(1),
   userId: z.string().min(1),
 });
 
@@ -54,7 +60,25 @@ export async function register(req: Request, res: Response, next: NextFunction):
   try {
     const data = registerSchema.parse(req.body);
     const result = await authService.register(data);
-    res.status(201).json(result);
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful',
+      userId: result.userId,
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function verifyEmailLink(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { token, userId } = verifyEmailLinkSchema.parse(req.query);
+    const result = await authService.verifyEmailLink(userId, token);
+    res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
@@ -169,9 +193,16 @@ export async function resetPassword(req: Request, res: Response, next: NextFunct
 
 export async function resendOTP(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { userId } = resendOTPSchema.parse(req.body);
-    await authService.resendOTP(userId);
-    res.json({ message: 'Verification code resent.' });
+    const data = resendOTPSchema.parse(req.body);
+    if (!data.userId && !data.email) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        details: [{ message: 'Provide userId or email to resend verification' }],
+      });
+      return;
+    }
+    const result = await authService.resendOTP(data);
+    res.json({ message: 'Verification email sent! Check your inbox.', userId: result.userId });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });

@@ -11,21 +11,47 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendEmailOTP(to: string, firstName: string, otp: string): Promise<void> {
+export async function sendEmailOTP(
+  to: string,
+  firstName: string,
+  otp: string,
+  magicToken?: string,
+  userId?: string
+): Promise<void> {
+  const magicLink = magicToken && userId
+    ? `${env.FRONTEND_URL}/verify-email?token=${magicToken}&userId=${userId}`
+    : null;
+
   await transporter.sendMail({
     from: `"Axios Pay" <${env.SMTP_USER}>`,
     to,
     subject: 'Verify your Axios Pay email',
     html: `
-      <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <h1 style="color: #1A2332; font-family: Playfair Display, serif;">Axios Pay</h1>
+      <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #FDF8F3;">
+        <h1 style="color: #1A2332; font-family: Playfair Display, serif; margin-bottom: 8px;">Axios Pay</h1>
+        <p style="color: #9AA3AE; font-size: 12px; margin-bottom: 32px;">Cross-Border FX, Unlocked.</p>
+        
         <h2 style="color: #1A2332;">Hi ${firstName}, verify your email</h2>
-        <p style="color: #5A6474;">Your verification code is:</p>
-        <div style="background: #FDF3E3; border: 1px solid #E5E1DA; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
-          <span style="font-family: JetBrains Mono, monospace; font-size: 36px; letter-spacing: 8px; color: #C8772A; font-weight: bold;">${otp}</span>
+        <p style="color: #5A6474;">You're almost there! Verify your email to activate your Axios Pay account.</p>
+        
+        ${magicLink ? `
+        <div style="margin: 32px 0;">
+          <a href="${magicLink}" 
+             style="background: #C8772A; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block;">
+            ✓ Click to Verify Email
+          </a>
+        </div>` : ''}
+        
+        <p style="color: #5A6474; margin-top: 32px;">Or enter this 6-digit code manually:</p>
+        <div style="background: white; border: 2px solid #E5E1DA; border-radius: 12px; padding: 24px; text-align: center; margin: 16px 0;">
+          <span style="font-family: monospace; font-size: 40px; letter-spacing: 12px; color: #C8772A; font-weight: bold;">${otp}</span>
         </div>
-        <p style="color: #5A6474;">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
-        <p style="color: #9AA3AE; font-size: 12px; margin-top: 40px;">Axios Pay — Cross-Border FX, Unlocked.</p>
+        
+        <p style="color: #5A6474; font-size: 14px;">This code and link expire in <strong>10 minutes</strong>.</p>
+        <p style="color: #5A6474; font-size: 14px;">If you didn't create an Axios Pay account, ignore this email.</p>
+        
+        <hr style="border: none; border-top: 1px solid #E5E1DA; margin: 32px 0;">
+        <p style="color: #9AA3AE; font-size: 12px;">Axios Pay — Cross-Border FX, Unlocked.</p>
       </div>
     `,
   });

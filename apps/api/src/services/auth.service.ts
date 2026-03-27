@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { nanoid } from 'nanoid';
 import { prisma } from '../config/prisma';
@@ -71,29 +72,29 @@ export async function register(input: RegisterInput): Promise<{ userId: string; 
   });
 
   const emailOTP = generateOTP();
-  const phoneOTP = generateOTP();
+  const magicToken = crypto.randomBytes(32).toString('hex');
 
   await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
-  await storeOTP(`phone:${user.id}`, phoneOTP, PHONE_OTP_TTL);
+  await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
 
-  await sendEmailOTP(user.email, user.firstName, emailOTP);
+  await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
 
-  await sendPhoneOtpBestEffort(user.phone, phoneOTP, 'register');
-
-  return { userId: user.id, message: 'Registration successful. Please verify your email.' };
+  return { userId: user.id, message: 'Registration successful' };
 }
 
 export async function verifyEmail(userId: string, otp: string): Promise<{ verified: boolean }> {
-  await verifyOTP(`email:${userId}`, otp);
-
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error('USER_NOT_FOUND');
   if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
+
+  await verifyOTP(`email:${userId}`, otp);
 
   await prisma.user.update({
     where: { id: userId },
     data: { isEmailVerified: true },
   });
+
+  await redis.del(`magic:${userId}`);
 
   const phoneOTP = generateOTP();
   await storeOTP(`phone:${userId}`, phoneOTP, PHONE_OTP_TTL);
@@ -101,6 +102,37 @@ export async function verifyEmail(userId: string, otp: string): Promise<{ verifi
   await sendPhoneOtpBestEffort(user.phone, phoneOTP, 'verify-email');
 
   return { verified: true };
+}
+
+export async function verifyEmailLink(
+  userId: string,
+  token: string
+): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error('USER_NOT_FOUND');
+
+  if (user.isEmailVerified) {
+    return { verified: true, userId, alreadyVerified: true };
+  }
+
+  const storedToken = await redis.get(`magic:${userId}`);
+  if (!storedToken || storedToken !== token) {
+    throw new Error('INVALID_TOKEN');
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { isEmailVerified: true },
+  });
+
+  await redis.del(`magic:${userId}`);
+  await redis.del(`otp:email:${userId}`);
+
+  const phoneOTP = generateOTP();
+  await storeOTP(`phone:${userId}`, phoneOTP, PHONE_OTP_TTL);
+  await sendPhoneOtpBestEffort(user.phone, phoneOTP, 'verify-email-link');
+
+  return { verified: true, userId };
 }
 
 export async function verifyPhone(userId: string, otp: string): Promise<{ verified: boolean }> {
@@ -299,14 +331,23 @@ export async function resetPassword(email: string, otp: string, newPassword: str
   await redis.del(`reset:email:${email}`);
 }
 
-export async function resendOTP(userId: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+export async function resendOTP(input: { userId?: string; email?: string }): Promise<{ userId: string }> {
+  const user = input.userId
+    ? await prisma.user.findUnique({ where: { id: input.userId } })
+    : input.email
+      ? await prisma.user.findUnique({ where: { email: input.email } })
+      : null;
+
   if (!user) throw new Error('USER_NOT_FOUND');
   if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
 
   const otp = generateOTP();
-  await storeOTP(`email:${userId}`, otp, OTP_TTL);
-  await sendEmailOTP(user.email, user.firstName, otp);
+  const magicToken = crypto.randomBytes(32).toString('hex');
+  await storeOTP(`email:${user.id}`, otp, OTP_TTL);
+  await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
+  await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
+
+  return { userId: user.id };
 }
 
 function signAccessToken(userId: string): string {
