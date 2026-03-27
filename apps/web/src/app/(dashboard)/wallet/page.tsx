@@ -45,16 +45,23 @@ export default function WalletPage() {
 
   return (
     <div className="max-w-4xl">
-      <h1 className="font-display text-2xl font-bold text-text-primary mb-6">Wallet</h1>
+      <h1 className="font-display text-[clamp(1.5rem,4vw,2.5rem)] font-bold text-text-primary mb-6">Wallet</h1>
+
+      <div className="mb-6 bg-brand-bg border border-brand-amber/20 rounded-card p-4">
+        <p className="text-sm text-text-secondary">Total Balance (across wallets)</p>
+        <p className="text-2xl font-semibold text-text-primary mt-1">
+          {(wallets || []).length ? `${(wallets || []).length} wallets active` : 'No wallet funded yet'}
+        </p>
+      </div>
 
       {/* Balances */}
       <div className="mb-8">
         {walletsLoading ? (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1,2,3].map(i => <div key={i} className="h-28 bg-subtle rounded-card animate-pulse" />)}
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {(wallets || []).map((w: Wallet) => (
               <WalletCard key={w.id} currency={w.currency} balance={w.balance} />
             ))}
@@ -64,12 +71,12 @@ export default function WalletPage() {
 
       {/* Transactions */}
       <div>
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
           {TABS.map(t => (
             <button
               key={t}
               onClick={() => { setTab(t); setPage(1); }}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${tab === t ? 'bg-brand-amber text-white' : 'bg-subtle text-text-secondary hover:bg-border'}`}
+              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-200 min-h-11 ${tab === t ? 'bg-brand-amber text-white' : 'bg-subtle text-text-secondary hover:bg-border'}`}
             >
               {t}
             </button>

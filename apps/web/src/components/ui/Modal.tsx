@@ -33,16 +33,16 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={closeOnOverlayClick ? onClose : () => undefined}
       />
-      <div className="relative bg-surface rounded-card shadow-xl w-full max-w-md p-6 z-10">
+      <div className="relative bg-surface rounded-t-2xl sm:rounded-card shadow-sm w-full max-w-none sm:max-w-md p-5 sm:p-6 z-10">
         <div className="flex items-center justify-between mb-4">
           {title && <h2 className="text-xl font-semibold text-text-primary font-display">{title}</h2>}
           {!hideCloseButton && (
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary ml-auto">
+            <button onClick={onClose} className="min-h-11 min-w-11 text-text-muted hover:text-text-primary ml-auto transition-all duration-200">
               <X className="w-5 h-5" />
             </button>
           )}
