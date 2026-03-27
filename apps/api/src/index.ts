@@ -4,6 +4,7 @@ import { redis } from './config/redis';
 import { env } from './config/env';
 import app from './app';
 import { refreshAllRates } from './services/rates.service';
+import { processRecurring } from './services/recurring.service';
 
 async function start(): Promise<void> {
   try {
@@ -52,6 +53,15 @@ async function start(): Promise<void> {
           console.error('❌ Rates refresh job failed:', cronErr);
         }
       }, env.RATE_REFRESH_INTERVAL_MS);
+
+      setInterval(async () => {
+        try {
+          await processRecurring();
+          console.log('✅ Recurring deposits processed successfully');
+        } catch (recurringErr) {
+          console.error('❌ Recurring deposits job failed:', recurringErr);
+        }
+      }, 60 * 60 * 1000);
     }
   } catch (err) {
     console.error('❌ Startup failed:', err);

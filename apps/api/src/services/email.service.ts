@@ -146,3 +146,20 @@ export async function sendDepositConfirmationEmail(
     `,
   });
 }
+
+export async function sendRecurringDepositFailedEmail(to: string, firstName: string): Promise<void> {
+  await transporter.sendMail({
+    from: `"Axios Pay" <${env.SMTP_USER}>`,
+    to,
+    subject: 'Your recurring deposit failed',
+    html: `
+      <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="color: #1A2332; font-family: Playfair Display, serif;">Axios Pay</h1>
+        <h2 style="color: #1A2332;">Recurring deposit failed</h2>
+        <p style="color: #5A6474;">Hi ${firstName}, your scheduled recurring deposit could not be processed.</p>
+        <p style="color: #5A6474;">Please check your card details and try again from your dashboard.</p>
+        <p style="color: #9AA3AE; font-size: 12px; margin-top: 20px;">Axios Pay — Cross-Border FX, Unlocked.</p>
+      </div>
+    `,
+  });
+}

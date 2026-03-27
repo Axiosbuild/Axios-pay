@@ -19,6 +19,8 @@ export interface User {
   dailyLimitResetAt?: string;
   createdAt?: string;
   wallets?: Array<{ id: string; currency: string; balance: string }>;
+  cardToken?: string | null;
+  cardTokenizedAt?: string | null;
 }
 
 interface AuthState {

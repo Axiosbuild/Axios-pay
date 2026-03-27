@@ -20,5 +20,17 @@ router.get('/deposit/verify/:reference', walletController.verifyDeposit);
 router.post('/swap', walletController.swapCurrency);
 router.get('/transactions', walletController.getTransactions);
 router.get('/transactions/:id', walletController.getTransaction);
+router.post('/recurring', walletController.createRecurring);
+router.get('/recurring', walletController.listRecurring);
+router.delete('/recurring/:id', walletController.cancelRecurring);
+router.post('/refund', walletController.requestRefund);
+router.post('/payment-links', walletController.createPaymentLink);
+router.get('/payment-links', walletController.listPaymentLinks);
+router.delete('/payment-links/:id', walletController.deactivatePaymentLink);
+router.get('/transfers/banks', walletController.listBanks);
+router.post('/transfers/resolve', walletController.resolveBankAccount);
+router.post('/transfers/send', walletController.sendTransfer);
+router.post('/paycodes', walletController.generatePaycode);
+router.get('/paycodes', walletController.listPaycodes);
 
 export default router;

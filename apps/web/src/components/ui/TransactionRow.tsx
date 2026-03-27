@@ -18,6 +18,8 @@ interface Transaction {
   toAmount: string | number;
   narration?: string;
   createdAt: string;
+  onRequestRefund?: () => void;
+  canRefund?: boolean;
 }
 
 export function TransactionRow({ tx }: { tx: Transaction }) {
@@ -46,6 +48,16 @@ export function TransactionRow({ tx }: { tx: Transaction }) {
         <div className="hidden sm:block">
           <Badge status={tx.status} />
         </div>
+        {tx.canRefund && tx.onRequestRefund && (
+          <button
+            type="button"
+            aria-label="Request refund for transaction"
+            onClick={tx.onRequestRefund}
+            className="mt-2 sm:mt-1 text-xs text-brand-amber hover:underline"
+          >
+            Request Refund
+          </button>
+        )}
       </div>
     </div>
   );
