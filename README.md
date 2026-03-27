@@ -1,6 +1,7 @@
 Axios Pay: Interswitch x Enyata Hackathon Edition
 Axios Pay is a high-performance cross-border payment platform engineered to solve liquidity and currency exchange challenges across Africa. Developed specifically for the Interswitch x Enyata Hackathon, the platform leverages the Interswitch ecosystem to facilitate seamless, real-time currency swaps.
 For example, a user traveling from Nigeria to Uganda can instantly swap Naira (NGN) within the app and receive the Ugandan Shilling (UGX) equivalent via a partner bank or mobile wallet—all powered by secure, local financial rails.
+
 🚀 Key Features
  * Interswitch Integration: Utilizes Interswitch's robust payment gateway for secure collections and payouts.
  * Real-Time FX Engine: Dynamic currency swap logic providing competitive rates for intra-African corridors.
@@ -12,6 +13,7 @@ For example, a user traveling from Nigeria to Uganda can instantly swap Naira (N
  * Frontend: Next.js (located in apps/web)
  * Caching & Messaging: Redis & Socket.io (for real-time transaction updates)
  * Infrastructure: Docker & Docker Compose
+   
 👥 The Team & Contributions
 Fortitude Odunlami — Product Manager
 Fortitude defined the product roadmap and hackathon strategy, ensuring the solution met the technical and business requirements of the Interswitch ecosystem.
@@ -19,12 +21,14 @@ Fortitude defined the product roadmap and hackathon strategy, ensuring the solut
  * Logic Design: Specified the business rules for fx.service.ts to handle spread calculations and transaction limits.
  * API Documentation: Managed the technical documentation and workflow for the Interswitch API integration.
  * Stakeholder Alignment: Coordinated between technical and design requirements to meet hackathon milestones.
+   
 Emmanuel Duke — Full Stack Developer
 Emmanuel architected and implemented the entire codebase, from the financial service integrations to the real-time user interface.
  * Service Architecture: Implemented interswitch.service.ts to bridge the platform with Interswitch’s payment infrastructure.
  * Core Logic: Built the transaction and wallet management systems (transactions.ts, wallets.ts, fx.service.ts).
  * Database & Security: Engineered the schema using Prisma and implemented robust authentication via auth.middleware.ts and jwt.ts.
  * Infrastructure: Set up the Docker environment and CI/CD workflows for consistent deployment.
+   
 📂 Repository Structure
 Axios-pay/
 ├── apps/web/           # Next.js frontend application
