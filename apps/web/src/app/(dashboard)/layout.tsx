@@ -76,11 +76,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <nav className="flex-1 p-4 space-y-1">
-          {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+          {NAV_ITEMS.map(({ href, icon: Icon, label }, index) => {
             const active = pathname === href;
             return (
               <Link
-                key={`${href}-${label}`}
+                key={`${href}-${index}`}
                 href={href}
                 className={`min-h-11 flex items-center gap-3 px-3 py-2.5 rounded-btn text-sm font-medium transition-all duration-200 border-l-2 ${active ? 'border-brand-amber text-brand-amber bg-white/5' : 'border-transparent text-white/60 hover:text-white hover:bg-white/10'}`}
               >
@@ -108,7 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Top bar */}
       <header className="fixed top-0 right-0 left-0 md:left-20 lg:left-60 z-30 bg-page/95 backdrop-blur border-b border-border">
-        <div className="h-14 px-4 md:px-6 grid grid-cols-3 md:grid-cols-[1fr_auto] items-center">
+        <div className="h-14 px-4 md:px-6 flex items-center justify-between relative">
           <div className="flex items-center">
             <button
               type="button"
@@ -118,10 +118,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Menu className="w-6 h-6" />
             </button>
-            <p className="font-display text-lg text-text-primary text-center md:text-left md:ml-0 -ml-11 md:-ml-0">
-              Axios Pay
-            </p>
           </div>
+          <p className="font-display text-lg text-text-primary absolute left-1/2 -translate-x-1/2 md:static md:left-auto md:translate-x-0">
+            Axios Pay
+          </p>
           <div className="flex items-center justify-end gap-2">
             <Link href="/notifications" className="min-h-11 min-w-11 flex items-center justify-center rounded-full text-text-primary transition-all duration-200 hover:bg-subtle">
               <Bell className="w-5 h-5" />
@@ -144,11 +144,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
           </div>
           <nav className="space-y-2">
-            {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+            {NAV_ITEMS.map(({ href, icon: Icon, label }, index) => {
               const active = pathname === href;
               return (
                 <Link
-                  key={`mobile-${href}-${label}`}
+                  key={`mobile-${href}-${index}`}
                   href={href}
                   onClick={() => setDrawerOpen(false)}
                   className={`min-h-11 px-3 rounded-btn flex items-center gap-3 transition-all duration-200 border-l-2 ${active ? 'border-brand-amber text-brand-amber bg-brand-bg' : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-subtle'}`}
