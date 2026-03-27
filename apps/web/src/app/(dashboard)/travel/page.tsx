@@ -71,6 +71,14 @@ export default function TravelPage() {
           </div>
         )}
       </Card>
+      <Card className="mt-4">
+        <h2 className="font-semibold text-text-primary mb-2">Conference travel use case</h2>
+        <p className="text-sm text-text-secondary">
+          Traveling from Nigeria to Nairobi for a conference? Axios Pay&apos;s cross-border FX (powered through partner banks
+          and Interswitch/Quickteller rails) lets you swap directly from NGN to KES so you can pay for hotels, rides, and meals
+          in local currency — no USD conversion required.
+        </p>
+      </Card>
     </div>
   );
 }

@@ -18,13 +18,14 @@ const step1Schema = z.object({
   nationality: z.enum(['NG', 'UG', 'KE', 'GH', 'ZA'], { required_error: 'Select your country' }),
 });
 
-const step2Schema = z
-  .object({
-    countryCode: z.string().min(1, 'Select country code'),
-    localPhone: z.string().regex(/^\d{6,14}$/, 'Enter a valid local phone number'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string().min(1, 'Confirm Password is required'),
-  })
+const step2BaseSchema = z.object({
+  countryCode: z.string().min(1, 'Select country code'),
+  localPhone: z.string().regex(/^\d{6,14}$/, 'Enter a valid local phone number'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  confirmPassword: z.string().min(1, 'Confirm Password is required'),
+});
+
+const step2Schema = step2BaseSchema
   .refine((data) => data.password === data.confirmPassword, {
     path: ['confirmPassword'],
     message: 'Passwords do not match',
@@ -116,7 +117,7 @@ export default function RegisterPage() {
           if (!field || !detail.message) return;
           if (field in step1Schema.shape) {
             form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
-          } else if (field in step2Schema.shape) {
+          } else if (field in step2BaseSchema.shape) {
             form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
           }
         });

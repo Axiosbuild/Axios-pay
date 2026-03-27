@@ -59,23 +59,27 @@ export default function WithdrawPage() {
     if (!pinToken || !pending) return;
     setLoading(true);
     setMessage('');
-    api.wallets
-      [mode === 'bank' ? 'sendTransfer' : 'transferToAxiosUser'](
-        mode === 'bank'
-          ? {
+    const request =
+      mode === 'bank'
+        ? api.wallets.sendTransfer(
+            {
               bankCode,
               accountNumber,
               accountName,
               amount: Number(amount),
               narration: narration || undefined,
-            }
-          : {
+            },
+            pinToken
+          )
+        : api.wallets.transferToAxiosUser(
+            {
               recipientEmail,
               amount: Number(amount),
               narration: narration || undefined,
             },
-        pinToken
-      )
+            pinToken
+          );
+    request
       .then((r) => setMessage(r.data?.status === 'SUCCESS' ? 'Withdrawal successful' : 'Withdrawal failed'))
       .catch((err: unknown) => {
         const e = err as { response?: { data?: { message?: string } }; message?: string };
