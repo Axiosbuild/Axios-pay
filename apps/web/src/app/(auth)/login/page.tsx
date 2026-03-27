@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -25,7 +25,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   RATE_LIMIT: 'Too many attempts. Please wait 15 minutes.',
 };
 
-export default function LoginPage() {
+function LoginPageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -164,5 +164,13 @@ export default function LoginPage() {
         <Link href="/register" className="text-brand-amber hover:underline font-medium">Sign up</Link>
       </p>
     </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<Card><p className="text-sm text-text-muted">Loading...</p></Card>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

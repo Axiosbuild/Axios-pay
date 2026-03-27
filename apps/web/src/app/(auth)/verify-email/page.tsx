@@ -1,12 +1,12 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { OTPInput } from '@/components/ui/OTPInput';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
-export default function VerifyEmailPage() {
+function VerifyEmailPageContent() {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -183,5 +183,13 @@ export default function VerifyEmailPage() {
         )}
       </div>
     </Card>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<Card><p className="text-sm text-text-muted">Loading...</p></Card>}>
+      <VerifyEmailPageContent />
+    </Suspense>
   );
 }
