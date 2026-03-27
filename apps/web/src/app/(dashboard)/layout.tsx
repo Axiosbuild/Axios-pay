@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, User, LogOut, Bell, ShieldCheck, Plane, Gift, Lock, Building2, Menu, X } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, User, LogOut, Bell, ShieldCheck, Plane, Gift, Lock, Building2, Menu, X, Landmark, ReceiptText, Link2 } from 'lucide-react';
 import { PINSetupModal } from '@/components/PINSetupModal';
 import { useAuthStore } from '@/store/authStore';
 import { api } from '@/lib/api';
@@ -13,6 +13,9 @@ const NAV_ITEMS = [
   { href: '/swap', icon: ArrowLeftRight, label: 'Swap' },
   { href: '/wallet', icon: Wallet, label: 'Wallet' },
   { href: '/deposit', icon: CreditCard, label: 'Deposit' },
+  { href: '/withdraw', icon: Landmark, label: 'Withdraw' },
+  { href: '/bills', icon: ReceiptText, label: 'Bills' },
+  { href: '/payment-links', icon: Link2, label: 'Payment Links' },
   { href: '/rate-lock', icon: Lock, label: 'Lock Rate' },
   { href: '/alerts', icon: Bell, label: 'Rate Alerts' },
   { href: '/travel', icon: Plane, label: 'Travel History' },

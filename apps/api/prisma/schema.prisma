@@ -26,12 +26,17 @@ model User {
   kycStatus        KycStatus   @default(PENDING)
   isEmailVerified  Boolean     @default(false)
   isPhoneVerified  Boolean     @default(false)
+  cardToken        String?
+  cardTokenizedAt  DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   wallets          Wallet[]
   transactions     Transaction[]
   notifications    Notification[]
   sessions         Session[]
+  recurringDeposits RecurringDeposit[]
+  paymentLinks     PaymentLink[]
+  paycodes         Paycode[]
 }
 
 model Wallet {
@@ -119,16 +124,73 @@ enum TransactionType {
   DEPOSIT
   SWAP
   WITHDRAWAL
+  BILL_PAYMENT
 }
 
 enum TransactionStatus {
   PENDING
   PROCESSING
   COMPLETED
+  REFUNDED
   FAILED
   REVERSED
 }
 
 enum NotificationType {
   DEPOSIT
+  WITHDRAWAL
+  REFUND
+  BILL_PAYMENT
+  RECURRING
+  PAYCODE
+  PAYMENT_LINK
+}
+
+model RecurringDeposit {
+  id        String             @id @default(cuid())
+  userId    String
+  amount    Decimal            @db.Decimal(18, 2)
+  currency  String             @default("NGN")
+  frequency RecurringFrequency
+  nextRunAt DateTime
+  isActive  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive, nextRunAt])
+}
+
+enum RecurringFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+model PaymentLink {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Decimal  @db.Decimal(18, 2)
+  description String
+  reference   String   @unique
+  linkUrl     String
+  usesCount   Int      @default(0)
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive, expiresAt])
+}
+
+model Paycode {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Decimal  @db.Decimal(18, 2)
+  code      String   @unique
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

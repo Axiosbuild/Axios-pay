@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { WalletCard } from '@/components/ui/WalletCard';
 import { TransactionRow } from '@/components/ui/TransactionRow';
 import { Spinner } from '@/components/ui/Spinner';
+import { Button } from '@/components/ui/Button';
 
 const TABS = ['ALL', 'DEPOSITS', 'SWAPS'] as const;
 type Tab = typeof TABS[number];
@@ -25,6 +26,15 @@ interface Transaction {
   toAmount: string | number;
   narration?: string;
   createdAt: string;
+  reference?: string;
+}
+
+interface Paycode {
+  id: string;
+  code: string;
+  amount: string;
+  expiresAt: string;
+  isUsed: boolean;
 }
 
 export default function WalletPage() {
@@ -42,6 +52,46 @@ export default function WalletPage() {
     queryKey: ['transactions', tab, page],
     queryFn: () => api.wallets.getTransactions({ page, limit: 20, type: typeMap[tab] }).then(r => r.data),
   });
+
+  const [cashOutAmount, setCashOutAmount] = useState('1000');
+  const [cashOutLoading, setCashOutLoading] = useState(false);
+  const [cashOutMessage, setCashOutMessage] = useState('');
+  const [refundReasonByTx, setRefundReasonByTx] = useState<Record<string, string>>({});
+  const [refundLoadingTxId, setRefundLoadingTxId] = useState<string | null>(null);
+
+  const { data: paycodes } = useQuery({
+    queryKey: ['paycodes'],
+    queryFn: () => api.wallets.listPaycodes().then((r) => r.data as Paycode[]),
+  });
+
+  async function generatePaycode() {
+    setCashOutLoading(true);
+    setCashOutMessage('');
+    try {
+      const result = await api.wallets.generatePaycode({ amount: Number(cashOutAmount) });
+      const code = result.data?.code as string | undefined;
+      setCashOutMessage(code ? `Generated paycode: ${code}` : 'Paycode generated successfully.');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      setCashOutMessage(e?.response?.data?.message || e?.message || 'Failed to generate paycode.');
+    } finally {
+      setCashOutLoading(false);
+    }
+  }
+
+  async function requestRefund(transactionId: string) {
+    const reason = refundReasonByTx[transactionId] || 'User requested refund';
+    setRefundLoadingTxId(transactionId);
+    try {
+      await api.wallets.requestRefund({ transactionId, reason });
+    } catch {
+      // ignore in list row for now
+    } finally {
+      setRefundLoadingTxId(null);
+    }
+  }
+
+  const now = Date.now();
 
   return (
     <div className="max-w-4xl">
@@ -89,7 +139,43 @@ export default function WalletPage() {
           ) : txData?.transactions?.length ? (
             <>
               {txData.transactions.map((tx: Transaction) => (
-                <TransactionRow key={tx.id} tx={tx} />
+                <div key={tx.id} className="space-y-2">
+                  <TransactionRow
+                    tx={{
+                      ...tx,
+                      canRefund:
+                        tx.type === 'DEPOSIT' &&
+                        tx.status === 'COMPLETED' &&
+                        now - new Date(tx.createdAt).getTime() <= 24 * 60 * 60 * 1000,
+                      onRequestRefund:
+                        tx.type === 'DEPOSIT' && tx.status === 'COMPLETED'
+                          ? () => requestRefund(tx.id)
+                          : undefined,
+                    }}
+                  />
+                  {tx.type === 'DEPOSIT' &&
+                    tx.status === 'COMPLETED' &&
+                    now - new Date(tx.createdAt).getTime() <= 24 * 60 * 60 * 1000 && (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          value={refundReasonByTx[tx.id] || ''}
+                          onChange={(e) =>
+                            setRefundReasonByTx((prev) => ({ ...prev, [tx.id]: e.target.value }))
+                          }
+                          placeholder="Reason for refund"
+                          className="w-full px-3 py-2 text-sm rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => requestRefund(tx.id)}
+                          loading={refundLoadingTxId === tx.id}
+                        >
+                          Confirm Refund
+                        </Button>
+                      </div>
+                    )}
+                </div>
               ))}
               <div className="flex justify-center gap-3 mt-4">
                 <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-sm text-brand-amber disabled:text-text-muted">Previous</button>
@@ -100,6 +186,38 @@ export default function WalletPage() {
           ) : (
             <p className="text-text-muted text-sm text-center py-8">No transactions yet.</p>
           )}
+        </div>
+      </div>
+
+      <div className="mt-8 bg-surface rounded-card border border-border p-4 space-y-4">
+        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">Cash Out</h2>
+        <p className="text-sm text-text-secondary">Generate a single-use paycode for Quickteller ATM/POS cash withdrawal.</p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="number"
+            min={100}
+            value={cashOutAmount}
+            onChange={(e) => setCashOutAmount(e.target.value)}
+            className="w-full sm:max-w-xs px-3 py-2.5 rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
+            placeholder="Amount"
+          />
+          <Button onClick={generatePaycode} loading={cashOutLoading}>Generate Paycode</Button>
+        </div>
+        {cashOutMessage && (
+          <div className="p-3 bg-brand-bg rounded-btn text-sm text-text-primary font-mono">{cashOutMessage}</div>
+        )}
+        <p className="text-xs text-text-muted">Use this code at any Quickteller ATM or POS terminal.</p>
+
+        <div className="space-y-2">
+          {(paycodes || []).map((item) => (
+            <div key={item.id} className="border border-border rounded-btn p-3 text-sm">
+              <p className="font-mono text-text-primary text-lg">{item.code}</p>
+              <p className="text-text-secondary">₦{Number(item.amount).toFixed(2)}</p>
+              <p className="text-text-muted text-xs">
+                Expires: {new Date(item.expiresAt).toLocaleString()} {item.isUsed ? '• Used' : ''}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

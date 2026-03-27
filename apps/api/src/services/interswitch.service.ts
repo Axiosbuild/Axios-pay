@@ -3,6 +3,7 @@ import axios, { AxiosError } from 'axios';
 import { nanoid } from 'nanoid';
 import { env } from '../config/env';
 import { redis } from '../config/redis';
+import { prisma } from '../config/prisma';
 
 const TOKEN_CACHE_KEY = 'interswitch:token';
 
@@ -23,9 +24,15 @@ interface CheckoutResponse {
 }
 
 interface QueryTransactionResponse {
+  ResponseCode?: string;
   responseCode?: string;
   status?: string;
   paymentStatus?: string;
+  amount?: number | string;
+  Amount?: number | string;
+  cardToken?: string;
+  paymentToken?: string;
+  token?: string;
 }
 
 function logInterswitchApiError(context: string, error: unknown): void {
@@ -144,10 +151,32 @@ export async function initiatePayment(
 
 export type InterswitchTransactionStatus = 'PAID' | 'PENDING' | 'FAILED';
 
+export interface InterswitchTransactionQueryResult {
+  status: InterswitchTransactionStatus;
+  amountInKobo: number | null;
+  responseCode?: string;
+  cardToken?: string;
+}
+
+function normalizeAmountInKobo(amount: unknown): number | null {
+  if (typeof amount === 'number' && Number.isFinite(amount)) {
+    return Math.round(amount);
+  }
+
+  if (typeof amount === 'string') {
+    const parsed = Number(amount);
+    if (Number.isFinite(parsed)) {
+      return Math.round(parsed);
+    }
+  }
+
+  return null;
+}
+
 export async function queryTransaction(
   reference: string,
   amountInKobo: number
-): Promise<InterswitchTransactionStatus> {
+): Promise<InterswitchTransactionQueryResult> {
   const token = await getAccessToken();
 
   try {
@@ -165,11 +194,23 @@ export async function queryTransaction(
       }
     );
 
-    const responseCode = response.data.responseCode;
+    const responseCode = response.data.ResponseCode ?? response.data.responseCode;
     const normalizedStatus = (response.data.status || response.data.paymentStatus || '').toUpperCase();
+    const queriedAmount = normalizeAmountInKobo(response.data.Amount ?? response.data.amount);
+    const cardToken =
+      response.data.cardToken ?? response.data.paymentToken ?? response.data.token;
+
+    if (queriedAmount !== null && queriedAmount !== amountInKobo) {
+      console.error('[Interswitch] Amount mismatch during requery', {
+        reference,
+        expectedAmountInKobo: amountInKobo,
+        queriedAmountInKobo: queriedAmount,
+      });
+      return { status: 'FAILED', amountInKobo: queriedAmount, responseCode, cardToken };
+    }
 
     if (responseCode === '00' || normalizedStatus === 'PAID' || normalizedStatus === 'SUCCESSFUL') {
-      return 'PAID';
+      return { status: 'PAID', amountInKobo: queriedAmount, responseCode, cardToken };
     }
 
     if (
@@ -178,14 +219,168 @@ export async function queryTransaction(
       normalizedStatus === 'PROCESSING' ||
       normalizedStatus === 'IN_PROGRESS'
     ) {
-      return 'PENDING';
+      return { status: 'PENDING', amountInKobo: queriedAmount, responseCode, cardToken };
     }
 
-    return 'FAILED';
+    return { status: 'FAILED', amountInKobo: queriedAmount, responseCode, cardToken };
   } catch (error) {
     logInterswitchApiError('Transaction query', error);
     throw new Error('PAYMENT_INIT_FAILED');
   }
+}
+
+export async function tokeniseCard(userId: string, txnRef: string): Promise<string | null> {
+  try {
+    const transaction = await prisma.transaction.findUnique({
+      where: { reference: txnRef },
+    });
+    if (!transaction || transaction.userId !== userId) {
+      return null;
+    }
+    const metadata =
+      transaction.metadata && typeof transaction.metadata === 'object' && !Array.isArray(transaction.metadata)
+        ? (transaction.metadata as Record<string, unknown>)
+        : null;
+    const token = metadata?.cardToken;
+    return typeof token === 'string' && token.trim().length > 0 ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function chargeToken(
+  _userId: string,
+  amount: number,
+  tokenValue: string
+): Promise<{ success: boolean; reference: string }> {
+  const token = await getAccessToken();
+  const reference = nanoid(20);
+  try {
+    const response = await axios.post(
+      `${env.INTERSWITCH_BASE_URL}/api/v1/recurring/charge`,
+      {
+        token: tokenValue,
+        amount: Math.round(amount * 100),
+        merchantCode: env.INTERSWITCH_MERCHANT_CODE,
+        reference,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    const status = String((response.data as { status?: string; responseCode?: string }).status || '').toUpperCase();
+    const responseCode = String((response.data as { responseCode?: string }).responseCode || '');
+    return {
+      success: status === 'SUCCESS' || responseCode === '00',
+      reference,
+    };
+  } catch (error) {
+    logInterswitchApiError('Charge token', error);
+    return { success: false, reference };
+  }
+}
+
+export async function initiateRefund(
+  transactionRef: string,
+  amount: number,
+  reason: string
+): Promise<{ status: string; reference: string }> {
+  const token = await getAccessToken();
+  const response = await axios.post(
+    `${env.INTERSWITCH_BASE_URL}/api/v1/refunds`,
+    {
+      transactionReference: transactionRef,
+      amount,
+      refundReason: reason,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  return {
+    status: String((response.data as { status?: string }).status || 'PENDING'),
+    reference: transactionRef,
+  };
+}
+
+export async function createPaymentLink(
+  userId: string,
+  amount: number,
+  description: string,
+  expiresAt: Date
+): Promise<{ reference: string; linkUrl: string }> {
+  const reference = nanoid(20);
+  const encoded = encodeURIComponent(`${description}-${userId}-${amount}-${expiresAt.toISOString()}`);
+  return {
+    reference,
+    linkUrl: `${env.FRONTEND_URL}/pay/${encoded}`,
+  };
+}
+
+export async function getBankList(): Promise<Array<{ code: string; name: string }>> {
+  const token = await getAccessToken();
+  const response = await axios.get(`${env.INTERSWITCH_BASE_URL}/api/v1/banks`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const banks = (response.data as { data?: Array<{ code?: string; name?: string }> }).data || [];
+  return banks
+    .filter((bank) => bank.code && bank.name)
+    .map((bank) => ({ code: String(bank.code), name: String(bank.name) }));
+}
+
+export async function resolveAccount(
+  bankCode: string,
+  accountNumber: string
+): Promise<{ accountName: string }> {
+  return {
+    accountName: `Account ${bankCode}-${accountNumber.slice(-4)}`,
+  };
+}
+
+export interface SendMoneyParams {
+  beneficiaryBankCode: string;
+  beneficiaryAccountNumber: string;
+  beneficiaryAccountName: string;
+  amount: number;
+  narration?: string;
+  senderName: string;
+}
+
+export async function sendMoney(
+  _userId: string,
+  params: SendMoneyParams
+): Promise<{ status: 'SUCCESS' | 'FAILED'; reference: string }> {
+  const token = await getAccessToken();
+  const reference = nanoid(20);
+  const response = await axios.post(
+    `${env.INTERSWITCH_BASE_URL}/api/v1/transfers`,
+    {
+      beneficiaryBankCode: params.beneficiaryBankCode,
+      beneficiaryAccountNumber: params.beneficiaryAccountNumber,
+      beneficiaryAccountName: params.beneficiaryAccountName,
+      amount: Math.round(params.amount * 100),
+      narration: params.narration || 'Axios Pay Wallet Withdrawal',
+      senderName: params.senderName,
+      reference,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  const status = String((response.data as { status?: string }).status || '').toUpperCase();
+  return {
+    status: status === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
+    reference,
+  };
 }
 
 export function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {

@@ -19,6 +19,8 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   RATES_UNAVAILABLE: { status: 503, message: 'Live rates are currently unavailable. Please try again shortly.' },
   PAYMENT_INIT_FAILED: { status: 502, message: 'Payment initiation failed. Please try again.' },
   TRANSACTION_NOT_FOUND: { status: 404, message: 'Transaction not found' },
+  CARD_NOT_TOKENIZED: { status: 400, message: 'A tokenized card is required. Make a successful card payment first.' },
+  REFUND_WINDOW_EXPIRED: { status: 400, message: 'Refund window has expired. Refunds are only allowed within 24 hours.' },
   PIN_INVALID: { status: 400, message: 'Invalid transaction PIN' },
   PIN_NOT_SET: { status: 400, message: 'Transaction PIN is not set' },
   PIN_ALREADY_SET: { status: 400, message: 'Transaction PIN is already set' },

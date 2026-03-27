@@ -138,6 +138,21 @@ export const api = {
       }),
     getTransactions: (params?: Record<string, unknown>) => apiClient.get('/wallets/transactions', { params }),
     getTransaction: (id: string) => apiClient.get(`/wallets/transactions/${id}`),
+    createRecurring: (data: unknown) => apiClient.post('/wallets/recurring', data),
+    listRecurring: () => apiClient.get('/wallets/recurring'),
+    cancelRecurring: (id: string) => apiClient.delete(`/wallets/recurring/${id}`),
+    requestRefund: (data: unknown) => apiClient.post('/wallets/refund', data),
+    createPaymentLink: (data: unknown) => apiClient.post('/wallets/payment-links', data),
+    listPaymentLinks: () => apiClient.get('/wallets/payment-links'),
+    deactivatePaymentLink: (id: string) => apiClient.delete(`/wallets/payment-links/${id}`),
+    getBanks: () => apiClient.get('/wallets/transfers/banks'),
+    resolveBankAccount: (data: unknown) => apiClient.post('/wallets/transfers/resolve', data),
+    sendTransfer: (data: unknown, pinToken?: string) =>
+      apiClient.post('/wallets/transfers/send', data, {
+        headers: pinToken ? { 'X-Pin-Token': pinToken } : undefined,
+      }),
+    generatePaycode: (data: unknown) => apiClient.post('/wallets/paycodes', data),
+    listPaycodes: () => apiClient.get('/wallets/paycodes'),
   },
   rates: {
     getAll: () => apiClient.get('/rates'),
@@ -155,5 +170,18 @@ export const api = {
     enable: (data: unknown) => apiClient.post('/2fa/enable', data),
     verify: (data: unknown) => apiClient.post('/2fa/verify', data),
     disable: (data: unknown) => apiClient.post('/2fa/disable', data),
+  },
+  bills: {
+    airtime: (data: unknown, pinToken?: string) =>
+      apiClient.post('/bills/airtime', data, {
+        headers: pinToken ? { 'X-Pin-Token': pinToken } : undefined,
+      }),
+    categories: () => apiClient.get('/bills/categories'),
+    billers: (categoryId: string) => apiClient.get(`/bills/billers/${categoryId}`),
+    validate: (data: unknown) => apiClient.post('/bills/validate', data),
+    pay: (data: unknown, pinToken?: string) =>
+      apiClient.post('/bills/pay', data, {
+        headers: pinToken ? { 'X-Pin-Token': pinToken } : undefined,
+      }),
   },
 };
