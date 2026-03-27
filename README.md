@@ -9,7 +9,7 @@ For example, a user traveling from Nigeria to Uganda can instantly swap Naira (N
  * Secure Wallet System: Multi-currency wallet support built on top of a resilient database layer.
 🛠 Tech Stack
  * Languages: TypeScript (94%), JavaScript, CSS
- * Backend: Node.js (Express) with Prisma ORM
+ * Backend: Node.js (Express) with Prisma ORM https://github.com/dukemawex/axioslast
  * Frontend: Next.js (located in apps/web)
  * Caching & Messaging: Redis & Socket.io (for real-time transaction updates)
  * Infrastructure: Docker & Docker Compose
