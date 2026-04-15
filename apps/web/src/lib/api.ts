@@ -22,6 +22,11 @@ export const apiClient: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+export const fundingClient: AxiosInstance = axios.create({
+  baseURL: `${API_URL}/api`,
+  headers: { 'Content-Type': 'application/json' },
+});
+
 // Request interceptor — attach access token
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
@@ -194,6 +199,12 @@ export const api = {
       apiClient.post('/bills/pay', data, {
         headers: pinToken ? { 'X-Pin-Token': pinToken } : undefined,
       }),
+  },
+  funding: {
+    fundWallet: (data: { amount: number; email: string }) =>
+      fundingClient.post('/fund-wallet', data),
+    getWalletBalance: (email: string) =>
+      fundingClient.get('/wallet-balance', { params: { email } }),
   },
 };
 
