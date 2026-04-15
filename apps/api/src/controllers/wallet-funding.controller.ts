@@ -43,6 +43,11 @@ export async function fundWalletViaQuickteller(req: Request, res: Response): Pro
     const userId = resolveUserIdFromEmail(email);
     const transactionReference = crypto.randomUUID();
     const redirectUrl = `${env.FRONTEND_URL}/payment-success?email=${encodeURIComponent(email)}`;
+    console.info('[WalletFunding][FundWallet] initialize request', {
+      email,
+      amount,
+      transactionReference,
+    });
 
     const initResult = await initializeInterswitchPayment({
       amount,
@@ -98,6 +103,7 @@ export async function interswitchFundingWebhook(req: Request, res: Response): Pr
 
     const marked = markFundingTransactionSuccessful(transactionReference);
     if (!marked) {
+      console.warn('[WalletFunding][Webhook] transaction not found', { transactionReference });
       res.status(404).json({
         error: 'TRANSACTION_NOT_FOUND',
         message: 'No matching transaction for webhook reference',
@@ -108,6 +114,11 @@ export async function interswitchFundingWebhook(req: Request, res: Response): Pr
     if (!marked.wasAlreadySuccessful) {
       creditWalletBalance(marked.transaction.userId, marked.transaction.amount);
     }
+
+    console.info('[WalletFunding][Webhook] processed', {
+      transactionReference,
+      credited: !marked.wasAlreadySuccessful,
+    });
 
     res.status(200).json({ received: true, credited: !marked.wasAlreadySuccessful });
   } catch (error) {

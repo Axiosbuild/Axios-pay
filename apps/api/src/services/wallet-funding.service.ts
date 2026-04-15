@@ -36,7 +36,27 @@ function sanitizeApiError(error: unknown) {
   return { message: error instanceof Error ? error.message : 'Unknown error' };
 }
 
+function validateSandboxCredentials(): void {
+  const missing: string[] = [];
+  if (!env.INTERSWITCH_CLIENT_ID || env.INTERSWITCH_CLIENT_ID.startsWith('placeholder')) {
+    missing.push('INTERSWITCH_CLIENT_ID');
+  }
+  if (!env.INTERSWITCH_CLIENT_SECRET || env.INTERSWITCH_CLIENT_SECRET.startsWith('placeholder')) {
+    missing.push('INTERSWITCH_CLIENT_SECRET');
+  }
+  if (!env.INTERSWITCH_MERCHANT_CODE || env.INTERSWITCH_MERCHANT_CODE.startsWith('placeholder')) {
+    missing.push('INTERSWITCH_MERCHANT_CODE');
+  }
+  if (!env.INTERSWITCH_PAY_ITEM_ID || env.INTERSWITCH_PAY_ITEM_ID.startsWith('placeholder')) {
+    missing.push('INTERSWITCH_PAY_ITEM_ID');
+  }
+  if (missing.length > 0) {
+    throw new Error(`Missing valid Interswitch sandbox credentials: ${missing.join(', ')}`);
+  }
+}
+
 export async function generateInterswitchOAuthToken(): Promise<string> {
+  validateSandboxCredentials();
   const baseUrl = env.BASE_URL || env.INTERSWITCH_BASE_URL;
   const credentials = Buffer.from(
     `${env.INTERSWITCH_CLIENT_ID}:${env.INTERSWITCH_CLIENT_SECRET}`
