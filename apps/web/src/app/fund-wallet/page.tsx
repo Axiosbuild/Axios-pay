@@ -15,7 +15,11 @@ export default function FundWalletPage() {
 
     try {
       const amountValue = Number(amount);
-      if (!Number.isFinite(amountValue) || amountValue < 100) {
+      if (!Number.isFinite(amountValue)) {
+        setError('Please enter a valid numeric amount.');
+        return;
+      }
+      if (amountValue < 100) {
         setError('Please enter an amount of at least ₦100.');
         return;
       }

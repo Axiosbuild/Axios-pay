@@ -18,10 +18,7 @@ interface InterswitchInitResponse {
   };
 }
 
-const QUICKTELLER_COLLECTION_PATHS = [
-  '/collections/api/v1/getcheckouturl',
-  '/collections/api/v1/getcheckupurl',
-];
+const QUICKTELLER_COLLECTION_PATHS = ['/collections/api/v1/getcheckouturl'];
 
 function sanitizeApiError(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -57,7 +54,7 @@ function validateSandboxCredentials(): void {
 
 export async function generateInterswitchOAuthToken(): Promise<string> {
   validateSandboxCredentials();
-  const baseUrl = env.BASE_URL || env.INTERSWITCH_BASE_URL;
+  const baseUrl = env.BASE_URL;
   const credentials = Buffer.from(
     `${env.INTERSWITCH_CLIENT_ID}:${env.INTERSWITCH_CLIENT_SECRET}`
   ).toString('base64');
@@ -97,7 +94,7 @@ export async function initializeInterswitchPayment(params: {
   transactionReference: string;
   redirectUrl: string;
 }): Promise<{ paymentUrl: string; rawResponse: unknown }> {
-  const baseUrl = env.BASE_URL || env.INTERSWITCH_BASE_URL;
+  const baseUrl = env.BASE_URL;
   const oauthToken = await generateInterswitchOAuthToken();
   const amountInKobo = Math.round(params.amount * 100);
 
