@@ -33,7 +33,7 @@ export async function fundWalletViaQuickteller(req: Request, res: Response): Pro
     if (!parsed.success) {
       res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: 'Invalid amount or email',
+        message: 'Amount must be at least ₦100 and email must be valid.',
         details: parsed.error.flatten(),
       });
       return;

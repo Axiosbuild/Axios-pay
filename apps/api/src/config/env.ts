@@ -15,7 +15,7 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY_DAYS: z.coerce.number().default(30),
   BASE_URL: z.string().url().default('https://api-gateway.interswitchng.com'),
-  INTERSWITCH_BASE_URL: z.string().url().default('https://api-gateway.interswitchng.com'),
+  INTERSWITCH_BASE_URL: z.string().url().optional(),
   INTERSWITCH_PASSPORT_URL: z.string().url().default('https://example.invalid'),
   INTERSWITCH_CLIENT_ID: z.string().min(1).default('placeholder-client-id'),
   INTERSWITCH_CLIENT_SECRET: z.string().min(1).default('placeholder-client-secret'),
@@ -89,5 +89,10 @@ if (missingKeys.length > 0) {
   );
 }
 
-export const env = result.data;
+const normalizedEnv = {
+  ...result.data,
+  INTERSWITCH_BASE_URL: result.data.INTERSWITCH_BASE_URL || result.data.BASE_URL,
+};
+
+export const env = normalizedEnv;
 export type Env = typeof env;

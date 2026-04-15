@@ -16,7 +16,7 @@ export default function FundWalletPage() {
     try {
       const amountValue = Number(amount);
       if (!Number.isFinite(amountValue)) {
-        setError('Please enter a valid numeric amount.');
+        setError('Please enter a valid positive numeric amount.');
         return;
       }
       if (amountValue < 100) {

@@ -54,7 +54,7 @@ function validateSandboxCredentials(): void {
 
 export async function generateInterswitchOAuthToken(): Promise<string> {
   validateSandboxCredentials();
-  const baseUrl = env.BASE_URL;
+  const baseUrl = env.INTERSWITCH_BASE_URL;
   const credentials = Buffer.from(
     `${env.INTERSWITCH_CLIENT_ID}:${env.INTERSWITCH_CLIENT_SECRET}`
   ).toString('base64');
@@ -94,7 +94,7 @@ export async function initializeInterswitchPayment(params: {
   transactionReference: string;
   redirectUrl: string;
 }): Promise<{ paymentUrl: string; rawResponse: unknown }> {
-  const baseUrl = env.BASE_URL;
+  const baseUrl = env.INTERSWITCH_BASE_URL;
   const oauthToken = await generateInterswitchOAuthToken();
   const amountInKobo = Math.round(params.amount * 100);
 
