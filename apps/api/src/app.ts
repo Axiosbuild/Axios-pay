@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import { env } from './config/env';
 import { errorMiddleware } from './middleware/error.middleware';
 import apiRoutes from './routes/index';
+import walletFundingRoutes from './routes/wallet-funding.routes';
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 app.use('/api/v1', apiRoutes);
+app.use('/api', walletFundingRoutes);
 
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'NOT_FOUND', message: 'The requested resource was not found' });
