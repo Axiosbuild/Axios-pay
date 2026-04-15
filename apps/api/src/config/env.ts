@@ -91,6 +91,8 @@ if (missingKeys.length > 0) {
 
 const normalizedEnv = {
   ...result.data,
+  // BASE_URL is kept for requested .env compatibility, while INTERSWITCH_BASE_URL
+  // is the canonical key consumed by services in this codebase.
   INTERSWITCH_BASE_URL: result.data.INTERSWITCH_BASE_URL || result.data.BASE_URL,
 };
 

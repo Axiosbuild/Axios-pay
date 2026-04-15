@@ -18,7 +18,7 @@ interface InterswitchInitResponse {
   };
 }
 
-const QUICKTELLER_COLLECTION_PATHS = ['/collections/api/v1/getcheckouturl'];
+const QUICKTELLER_CHECKOUT_ENDPOINT = '/collections/api/v1/getcheckouturl';
 
 function sanitizeApiError(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -84,7 +84,7 @@ export async function generateInterswitchOAuthToken(): Promise<string> {
     return response.data.access_token;
   } catch (error) {
     console.error('[WalletFunding][Interswitch OAuth] failed', sanitizeApiError(error));
-    throw new Error('INTERNAL_PAYMENT_AUTH_ERROR');
+    throw new Error('Failed to authenticate with Interswitch OAuth service.');
   }
 }
 
@@ -97,61 +97,55 @@ export async function initializeInterswitchPayment(params: {
   const baseUrl = env.INTERSWITCH_BASE_URL;
   const oauthToken = await generateInterswitchOAuthToken();
   const amountInKobo = Math.round(params.amount * 100);
-
-  let lastError: unknown;
-
-  for (const endpoint of QUICKTELLER_COLLECTION_PATHS) {
-    try {
-      const response = await axios.post<InterswitchInitResponse>(
-        `${baseUrl}${endpoint}`,
-        {
-          amount: amountInKobo,
-          transactionReference: params.transactionReference,
-          customerEmail: params.email,
-          currencyCode: '566',
-          redirectUrl: params.redirectUrl,
-          merchantCode: env.INTERSWITCH_MERCHANT_CODE,
-          payableCode: env.INTERSWITCH_PAY_ITEM_ID,
-          description: 'Wallet funding transaction',
+  try {
+    const response = await axios.post<InterswitchInitResponse>(
+      `${baseUrl}${QUICKTELLER_CHECKOUT_ENDPOINT}`,
+      {
+        amount: amountInKobo,
+        transactionReference: params.transactionReference,
+        customerEmail: params.email,
+        currencyCode: '566',
+        redirectUrl: params.redirectUrl,
+        merchantCode: env.INTERSWITCH_MERCHANT_CODE,
+        payableCode: env.INTERSWITCH_PAY_ITEM_ID,
+        description: 'Wallet funding transaction',
+      },
+      {
+        timeout: 25000,
+        headers: {
+          Authorization: `Bearer ${oauthToken}`,
+          'Content-Type': 'application/json',
         },
-        {
-          timeout: 25000,
-          headers: {
-            Authorization: `Bearer ${oauthToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      console.info('[WalletFunding][Interswitch Init] response', {
-        endpoint,
-        status: response.status,
-        data: response.data,
-      });
-
-      const paymentUrl =
-        response.data.paymentUrl ??
-        response.data.paymentLink ??
-        response.data.checkoutUrl ??
-        response.data.data?.paymentUrl ??
-        response.data.data?.paymentLink ??
-        response.data.data?.checkoutUrl;
-
-      if (!paymentUrl) {
-        throw new Error('Interswitch did not return paymentUrl');
       }
+    );
 
-      return { paymentUrl, rawResponse: response.data };
-    } catch (error) {
-      lastError = error;
-      console.error('[WalletFunding][Interswitch Init] failed', {
-        endpoint,
-        error: sanitizeApiError(error),
-      });
+    console.info('[WalletFunding][Interswitch Init] response', {
+      endpoint: QUICKTELLER_CHECKOUT_ENDPOINT,
+      status: response.status,
+      data: response.data,
+    });
+
+    const paymentUrl =
+      response.data.paymentUrl ??
+      response.data.paymentLink ??
+      response.data.checkoutUrl ??
+      response.data.data?.paymentUrl ??
+      response.data.data?.paymentLink ??
+      response.data.data?.checkoutUrl;
+
+    if (!paymentUrl) {
+      throw new Error('Interswitch did not return paymentUrl');
     }
-  }
 
-  throw new Error(
-    lastError instanceof Error ? lastError.message : 'INTERNAL_PAYMENT_INITIALIZATION_ERROR'
-  );
+    return { paymentUrl, rawResponse: response.data };
+  } catch (error) {
+    console.error('[WalletFunding][Interswitch Init] failed', {
+      endpoint: QUICKTELLER_CHECKOUT_ENDPOINT,
+      error: sanitizeApiError(error),
+    });
+    if (error instanceof Error) {
+      throw new Error(`Failed to initialize Interswitch payment: ${error.message}`);
+    }
+    throw new Error('Failed to initialize Interswitch payment due to an unknown error.');
+  }
 }

@@ -31,9 +31,15 @@ export async function fundWalletViaQuickteller(req: Request, res: Response): Pro
   try {
     const parsed = fundWalletSchema.safeParse(req.body);
     if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0];
       res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: 'Amount must be at least ₦100 and email must be valid.',
+        message:
+          firstIssue?.path?.[0] === 'amount'
+            ? 'Amount must be at least ₦100.'
+            : firstIssue?.path?.[0] === 'email'
+              ? 'Email must be valid.'
+              : 'Invalid request payload.',
         details: parsed.error.flatten(),
       });
       return;
