@@ -10,6 +10,10 @@ import walletFundingRoutes from './routes/wallet-funding.routes';
 
 const app = express();
 
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 app.use(helmet());
 app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
 app.use(compression());
@@ -23,10 +27,6 @@ app.use('/api/v1/webhooks', express.raw({ type: 'application/json' }), (req: Req
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ service: 'Axios Pay API', status: 'healthy', timestamp: new Date().toISOString() });
-});
 
 app.get('/', (_req: Request, res: Response) => {
   res.json({ service: 'Axios Pay API', status: 'running', endpoints: ['/health', '/api/v1/*'] });
