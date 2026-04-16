@@ -3,11 +3,18 @@ import rateLimit from 'express-rate-limit';
 import * as authController from '../controllers/auth.controller';
 
 const router = Router();
+const AUTH_ROUTE_TIMEOUT_MS = 15_000;
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
   message: { error: 'RATE_LIMIT', message: 'Too many attempts. Try again in 15 minutes.' },
+});
+
+router.use((req, res, next) => {
+  req.setTimeout(AUTH_ROUTE_TIMEOUT_MS);
+  res.setTimeout(AUTH_ROUTE_TIMEOUT_MS);
+  next();
 });
 
 /**

@@ -33,7 +33,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().email().default('axiosbuild@gmail.com'),
   SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
   SMTP_REPLY_TO: z.string().email().optional(),
-  SMTP_POOL: z.coerce.boolean().default(true),
+  SMTP_POOL: z.coerce.boolean().default(false),
   SMTP_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(20).default(5),
   SMTP_MAX_MESSAGES: z.coerce.number().int().min(1).max(500).default(100),
   SMTP_TIMEOUT_MS: z.coerce.number().int().min(5000).default(10000), // SMTP greeting timeout (server hello)

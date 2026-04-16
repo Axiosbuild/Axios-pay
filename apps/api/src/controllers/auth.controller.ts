@@ -76,6 +76,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
       userId: result.userId,
       requiresVerification: result.requiresVerification,
       emailDelivery: result.emailDelivery,
+      emailSent: result.emailSent,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
