@@ -22,8 +22,7 @@ function VerifyEmailPageContent() {
   const userIdFromStorage = typeof window !== 'undefined' ? sessionStorage.getItem('verify_userId') : null;
   const userId = userIdFromUrl || userIdFromStorage;
 
-  const storedEmail =
-    (typeof window !== 'undefined' ? sessionStorage.getItem('verify_email') || '' : '') || emailFromUrl || '';
+  const storedEmail = emailFromUrl || (typeof window !== 'undefined' ? sessionStorage.getItem('verify_email') : null) || '';
   const maskedEmail = storedEmail
     ? storedEmail.replace(/^(.).*(@.+)$/, (_match, first, domain) => `${first}***${domain}`)
     : 'your email';

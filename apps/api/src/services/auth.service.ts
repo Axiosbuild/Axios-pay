@@ -102,16 +102,6 @@ export async function register(
           responseCode: smtpError.responseCode,
         });
       }
-    })
-    .catch((error) => {
-      const smtpError = error as SMTPError;
-      console.error('Unhandled registration email background promise rejection', {
-        userId: user.id,
-        requestId: context?.requestId,
-        vercelId: context?.vercelId,
-        errorMessage: smtpError.message,
-        errorCode: smtpError.code,
-      });
     });
 
   return {
