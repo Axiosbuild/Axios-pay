@@ -30,6 +30,9 @@ const envSchema = z.object({
   TWILIO_PHONE_NUMBER: z.string().min(1).default('placeholder-twilio-number'),
   SMTP_USER: z.string().email().default('info@axiospay.space'),
   SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
+  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().default(5000),
+  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().default(10000),
+  SMTP_SEND_TIMEOUT_MS: z.coerce.number().default(5000),
   FRONTEND_URL: z
     .string()
     .url()
@@ -75,6 +78,9 @@ const defaultedKeys = [
   'INTERSWITCH_WEBHOOK_SECRET',
   'SMTP_USER',
   'SMTP_PASS',
+  'SMTP_CONNECTION_TIMEOUT_MS',
+  'SMTP_SOCKET_TIMEOUT_MS',
+  'SMTP_SEND_TIMEOUT_MS',
   'ENCRYPTION_KEY',
   'ADMIN_EMAIL',
   'EXCHANGE_RATE_API_KEY',

@@ -5,6 +5,10 @@ export const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
   secure: true,
+  pool: true,
+  maxConnections: 5,
+  connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
+  socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
   auth: {
     user: env.SMTP_USER,
     pass: env.SMTP_PASS,
