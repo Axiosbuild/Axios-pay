@@ -67,6 +67,7 @@ export default function RegisterPage() {
   );
 
   async function onStep1(data: Step1) {
+    console.log('[register] onStep1 submitted — advancing to step 2', data);
     setError('');
     setStep1Data(data);
     form2.setValue('countryCode', NATIONALITY_TO_DIAL_CODE[data.nationality]);
@@ -74,7 +75,13 @@ export default function RegisterPage() {
   }
 
   async function onStep2(data: Step2) {
-    if (!step1Data || loading) return;
+    console.log('[register] onStep2 submitted — attempting API call', data);
+    if (loading) return;
+    if (!step1Data) {
+      console.warn('[register] onStep2: step1Data is missing, cannot register');
+      setError('Something went wrong. Please go back and complete step 1.');
+      return;
+    }
     const localPhone = data.localPhone.replace(/\D/g, '').replace(/^0+/, '');
     if (!localPhone) {
       form2.setError('localPhone', { type: 'manual', message: 'Enter a valid local phone number' });
