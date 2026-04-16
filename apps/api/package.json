@@ -6,6 +6,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
+    "redis:check": "node scripts/redis-check.js",
     "type-check": "tsc --noEmit",
     "prestart": "prisma generate",
     "prisma:generate": "prisma generate",

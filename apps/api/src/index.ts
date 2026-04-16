@@ -1,6 +1,6 @@
 import './config/env'; // Validate env first
 import { prisma } from './config/prisma';
-import { redis } from './config/redis';
+import { checkRedisHealth, connectRedis, redis } from './config/redis';
 import { env } from './config/env';
 import app from './app';
 import { refreshAllRates } from './services/rates.service';
@@ -13,20 +13,25 @@ async function start(): Promise<void> {
     await prisma.$queryRaw`SELECT 1`;
     console.log('✅ Database connected');
 
-    // 3. Connect Redis
-    try {
-      await redis.connect();
-      await redis.ping();
-      console.log('✅ Redis connected');
-    } catch (err) {
-      console.warn('⚠️ Redis unavailable at startup. Continuing with degraded functionality (OTP/reset/session-cache features may fail until Redis recovers).');
-      console.warn('Redis startup error:', err);
+    // 3. Connect Redis (non-blocking)
+    const redisBootstrapPromise = (async () => {
       try {
-        redis.disconnect();
-      } catch (disconnectErr) {
-        console.warn('Redis disconnect cleanup error after failed startup connection:', disconnectErr);
+        await connectRedis();
+        const health = await checkRedisHealth();
+        if (health.healthy) {
+          console.log(`✅ Redis connected (${health.latencyMs}ms)`);
+          return;
+        }
+        console.warn('⚠️ Redis ping failed after connect attempt. Continuing with degraded functionality.');
+        console.warn('Redis health:', health);
+      } catch (err) {
+        console.warn('⚠️ Redis unavailable at startup. Continuing with degraded functionality (OTP/reset/session-cache features may fail until Redis recovers).');
+        console.warn('Redis startup error:', err);
       }
-    }
+    })();
+    redisBootstrapPromise.catch(() => {
+      // errors are already handled in the bootstrap block above
+    });
 
     // 4. Fetch all rates immediately
     try {
@@ -65,6 +70,11 @@ async function start(): Promise<void> {
     }
   } catch (err) {
     console.error('❌ Startup failed:', err);
+    try {
+      redis.disconnect();
+    } catch {
+      // Ignore cleanup disconnect errors because Redis may never have connected.
+    }
     process.exit(1);
   }
 }
