@@ -19,5 +19,8 @@
   },
   "engines": {
     "node": "22.x || 24.x"
+  },
+  "dependencies": {
+    "resend": "^6.12.0"
   }
 }
