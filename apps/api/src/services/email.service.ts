@@ -1,73 +1,238 @@
-import nodemailer from 'nodemailer';
+import crypto from 'crypto';
+import nodemailer, { type SendMailOptions, type Transporter } from 'nodemailer';
+import type SMTPPool from 'nodemailer/lib/smtp-pool';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { z } from 'zod';
 import { env } from '../config/env';
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-  },
-});
+type SMTPError = Error & {
+  code?: string;
+  command?: string;
+  responseCode?: number;
+  response?: string;
+};
 
-export async function sendEmailOTP(
-  to: string,
-  firstName: string,
-  otp: string,
-  magicToken?: string,
-  userId?: string
-): Promise<void> {
-  const magicLink = magicToken && userId
-    ? `${env.FRONTEND_URL}/verify-email?token=${magicToken}&userId=${userId}`
-    : null;
+const EMAIL_SCHEMA = z.string().trim().email();
+const GMAIL_APP_PASSWORD_REGEX = /^[A-Za-z0-9]{16}$/;
+const MAX_RETRY_ATTEMPTS = 3;
+const INITIAL_BACKOFF_MS = 500;
 
-  const subject = 'Verify your Axios Pay email';
+const SMTP_HOST = env.SMTP_HOST;
+const SMTP_PORT = env.SMTP_PORT;
+const SMTP_SECURE = SMTP_PORT === 465 ? true : env.SMTP_SECURE;
+const SMTP_REQUIRE_TLS = SMTP_PORT === 587;
+const SMTP_USER = env.SMTP_USER.trim();
+const SMTP_PASS = env.SMTP_PASS.trim();
+const SMTP_REPLY_TO = env.SMTP_REPLY_TO ?? SMTP_USER;
+
+const TRANSIENT_ERROR_CODES = new Set([
+  'ECONNECTION',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'EAI_AGAIN',
+  'ETIMEDOUT',
+  'ESOCKET',
+]);
+
+function createPooledTransporter(): Transporter {
+  const transportOptions: SMTPPool.Options = {
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    requireTLS: SMTP_REQUIRE_TLS,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+    pool: true,
+    maxConnections: env.SMTP_MAX_CONNECTIONS,
+    maxMessages: env.SMTP_MAX_MESSAGES,
+    connectionTimeout: env.SMTP_TIMEOUT_MS,
+    greetingTimeout: env.SMTP_TIMEOUT_MS,
+    socketTimeout: env.SMTP_TIMEOUT_MS,
+    tls: {
+      minVersion: 'TLSv1.2',
+      rejectUnauthorized: true,
+    },
+  };
+
+  return nodemailer.createTransport(transportOptions);
+}
+
+function createSingleShotTransporter(): Transporter {
+  const transportOptions: SMTPTransport.Options = {
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    requireTLS: SMTP_REQUIRE_TLS,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+    connectionTimeout: env.SMTP_TIMEOUT_MS,
+    greetingTimeout: env.SMTP_TIMEOUT_MS,
+    socketTimeout: env.SMTP_TIMEOUT_MS,
+    tls: {
+      minVersion: 'TLSv1.2',
+      rejectUnauthorized: true,
+    },
+  };
+
+  return nodemailer.createTransport(transportOptions);
+}
+
+const pooledTransporter = env.SMTP_POOL ? createPooledTransporter() : createSingleShotTransporter();
+const singleShotTransporter = createSingleShotTransporter();
+let hasVerifiedConnection = false;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function backoffDelay(attempt: number): number {
+  const jitter = Math.floor(Math.random() * 200);
+  return INITIAL_BACKOFF_MS * 2 ** (attempt - 1) + jitter;
+}
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function isTransientError(error: SMTPError): boolean {
+  if (error.code && TRANSIENT_ERROR_CODES.has(error.code)) {
+    return true;
+  }
+
+  if (error.responseCode && [421, 450, 451, 452].includes(error.responseCode)) {
+    return true;
+  }
+
+  const response = `${error.response || ''} ${error.message || ''}`;
+  return /\b4\.7\.0\b|try again later|temporar/i.test(response);
+}
+
+function buildMessageId(): string {
+  const domain = SMTP_USER.split('@')[1] || 'localhost';
+  return `<${crypto.randomUUID()}@${domain}>`;
+}
+
+function assertValidSMTPConfig(): void {
+  if (SMTP_HOST !== 'smtp.gmail.com') {
+    return;
+  }
+
+  if (SMTP_PORT !== 465 && SMTP_PORT !== 587) {
+    throw new Error('Gmail SMTP requires SMTP_PORT to be 465 (SSL) or 587 (STARTTLS).');
+  }
+
+  if (SMTP_PORT === 465 && !SMTP_SECURE) {
+    throw new Error('Gmail SMTP on port 465 requires SMTP_SECURE=true.');
+  }
+
+  if (SMTP_PORT === 587 && !SMTP_REQUIRE_TLS) {
+    throw new Error('Gmail SMTP on port 587 requires STARTTLS (requireTLS=true).');
+  }
+
+  if (!GMAIL_APP_PASSWORD_REGEX.test(SMTP_PASS)) {
+    throw new Error('Invalid Gmail App Password. Use the 16-character App Password without spaces.');
+  }
+}
+
+async function verifyConnectionIfNeeded(): Promise<void> {
+  if (hasVerifiedConnection) {
+    return;
+  }
+
   try {
-    await transporter.sendMail({
-      from: `"Axios Pay" <${env.SMTP_USER}>`,
-      to,
-      subject,
-      html: `
-      <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #FDF8F3;">
-        <h1 style="color: #1A2332; font-family: Playfair Display, serif; margin-bottom: 8px;">Axios Pay</h1>
-        <p style="color: #9AA3AE; font-size: 12px; margin-bottom: 32px;">Cross-Border FX, Unlocked.</p>
-        
-        <h2 style="color: #1A2332;">Hi ${firstName}, verify your email</h2>
-        <p style="color: #5A6474;">You're almost there! Verify your email to activate your Axios Pay account.</p>
-        
-        ${magicLink ? `
-        <div style="margin: 32px 0;">
-          <a href="${magicLink}" 
-             style="background: #C8772A; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block;">
-            ✓ Click to Verify Email
-          </a>
-        </div>` : ''}
-        
-        <p style="color: #5A6474; margin-top: 32px;">Or enter this 6-digit code manually:</p>
-        <div style="background: white; border: 2px solid #E5E1DA; border-radius: 12px; padding: 24px; text-align: center; margin: 16px 0;">
-          <span style="font-family: monospace; font-size: 40px; letter-spacing: 12px; color: #C8772A; font-weight: bold;">${otp}</span>
-        </div>
-        
-        <p style="color: #5A6474; font-size: 14px;">This code and link expire in <strong>10 minutes</strong>.</p>
-        <p style="color: #5A6474; font-size: 14px;">If you didn't create an Axios Pay account, ignore this email.</p>
-        
-        <hr style="border: none; border-top: 1px solid #E5E1DA; margin: 32px 0;">
-        <p style="color: #9AA3AE; font-size: 12px;">Axios Pay — Cross-Border FX, Unlocked.</p>
-      </div>
-    `,
-    });
+    await pooledTransporter.verify();
+    hasVerifiedConnection = true;
   } catch (error) {
-    const smtpError = error as Error & {
-      code?: string;
-      command?: string;
-      responseCode?: number;
-      response?: string;
-    };
-    console.error('Failed to send registration verification email', {
-      to,
-      subject,
-      smtpUser: env.SMTP_USER,
+    const smtpError = error as SMTPError;
+    console.warn('SMTP verification failed. Email send will continue with runtime fallback.', {
+      errorMessage: smtpError.message,
+      errorCode: smtpError.code,
+      responseCode: smtpError.responseCode,
+      response: smtpError.response,
+    });
+  }
+}
+
+async function sendWithRetry(mailOptions: SendMailOptions): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      await verifyConnectionIfNeeded();
+      await pooledTransporter.sendMail(mailOptions);
+      return;
+    } catch (pooledError) {
+      const primaryError = pooledError as SMTPError;
+
+      if (attempt === 1) {
+        try {
+          await singleShotTransporter.sendMail(mailOptions);
+          return;
+        } catch (fallbackError) {
+          const smtpFallbackError = fallbackError as SMTPError;
+          console.warn('Pooled SMTP send failed; single-shot fallback also failed.', {
+            errorMessage: smtpFallbackError.message,
+            errorCode: smtpFallbackError.code,
+            responseCode: smtpFallbackError.responseCode,
+            response: smtpFallbackError.response,
+          });
+        }
+      }
+
+      if (attempt === MAX_RETRY_ATTEMPTS || !isTransientError(primaryError)) {
+        throw primaryError;
+      }
+
+      await sleep(backoffDelay(attempt));
+    }
+  }
+}
+
+async function sendTemplatedEmail(options: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}): Promise<void> {
+  assertValidSMTPConfig();
+
+  const recipient = EMAIL_SCHEMA.parse(options.to);
+  const mailOptions: SendMailOptions = {
+    from: `"Axios Pay" <${SMTP_USER}>`,
+    to: recipient,
+    replyTo: SMTP_REPLY_TO,
+    subject: options.subject,
+    html: options.html,
+    text: options.text ?? htmlToText(options.html),
+    messageId: buildMessageId(),
+    headers: {
+      'X-Entity-Ref-ID': crypto.randomUUID(),
+    },
+  };
+
+  try {
+    await sendWithRetry(mailOptions);
+  } catch (error) {
+    const smtpError = error as SMTPError;
+    console.error('Failed to send email', {
+      to: recipient,
+      subject: options.subject,
+      smtpHost: SMTP_HOST,
+      smtpPort: SMTP_PORT,
+      smtpUser: SMTP_USER,
       errorName: smtpError.name,
       errorMessage: smtpError.message,
       errorCode: smtpError.code,
@@ -80,9 +245,53 @@ export async function sendEmailOTP(
   }
 }
 
+export async function sendEmailOTP(
+  to: string,
+  firstName: string,
+  otp: string,
+  magicToken?: string,
+  userId?: string
+): Promise<void> {
+  const magicLink =
+    magicToken && userId ? `${env.FRONTEND_URL}/verify-email?token=${magicToken}&userId=${userId}` : null;
+
+  const subject = 'Verify your Axios Pay email';
+  await sendTemplatedEmail({
+    to,
+    subject,
+    html: `
+      <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #FDF8F3;">
+        <h1 style="color: #1A2332; font-family: Playfair Display, serif; margin-bottom: 8px;">Axios Pay</h1>
+        <p style="color: #9AA3AE; font-size: 12px; margin-bottom: 32px;">Cross-Border FX, Unlocked.</p>
+
+        <h2 style="color: #1A2332;">Hi ${firstName}, verify your email</h2>
+        <p style="color: #5A6474;">You're almost there! Verify your email to activate your Axios Pay account.</p>
+
+        ${magicLink ? `
+        <div style="margin: 32px 0;">
+          <a href="${magicLink}"
+             style="background: #C8772A; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block;">
+            ✓ Click to Verify Email
+          </a>
+        </div>` : ''}
+
+        <p style="color: #5A6474; margin-top: 32px;">Or enter this 6-digit code manually:</p>
+        <div style="background: white; border: 2px solid #E5E1DA; border-radius: 12px; padding: 24px; text-align: center; margin: 16px 0;">
+          <span style="font-family: monospace; font-size: 40px; letter-spacing: 12px; color: #C8772A; font-weight: bold;">${otp}</span>
+        </div>
+
+        <p style="color: #5A6474; font-size: 14px;">This code and link expire in <strong>10 minutes</strong>.</p>
+        <p style="color: #5A6474; font-size: 14px;">If you didn't create an Axios Pay account, ignore this email.</p>
+
+        <hr style="border: none; border-top: 1px solid #E5E1DA; margin: 32px 0;">
+        <p style="color: #9AA3AE; font-size: 12px;">Axios Pay — Cross-Border FX, Unlocked.</p>
+      </div>
+    `,
+  });
+}
+
 export async function sendWelcomeEmail(to: string, firstName: string): Promise<void> {
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
+  await sendTemplatedEmail({
     to,
     subject: 'Welcome to Axios Pay 🎉',
     html: `
@@ -102,8 +311,7 @@ export async function sendWelcomeEmail(to: string, firstName: string): Promise<v
 }
 
 export async function sendPasswordResetOTP(to: string, firstName: string, otp: string): Promise<void> {
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
+  await sendTemplatedEmail({
     to,
     subject: 'Reset your Axios Pay password',
     html: `
@@ -128,8 +336,7 @@ export async function sendLoginNotificationEmail(
   userAgent: string | undefined,
   loginAt: Date
 ): Promise<void> {
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
+  await sendTemplatedEmail({
     to,
     subject: 'New login detected on your Axios Pay account',
     html: `
@@ -152,8 +359,7 @@ export async function sendLoginNotificationEmail(
 }
 
 export async function sendRateProvidersOutageEmail(to: string, failureDetails: string): Promise<void> {
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
+  await sendTemplatedEmail({
     to,
     subject: 'Axios Pay rates provider outage alert',
     html: `
@@ -175,8 +381,7 @@ export async function sendDepositConfirmationEmail(
   firstName: string,
   amount: string
 ): Promise<void> {
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
+  await sendTemplatedEmail({
     to,
     subject: 'Your Axios Pay deposit was successful',
     html: `
@@ -197,8 +402,7 @@ export async function sendDepositConfirmationEmail(
 }
 
 export async function sendRecurringDepositFailedEmail(to: string, firstName: string): Promise<void> {
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
+  await sendTemplatedEmail({
     to,
     subject: 'Your recurring deposit failed',
     html: `
@@ -214,8 +418,7 @@ export async function sendRecurringDepositFailedEmail(to: string, firstName: str
 }
 
 export async function sendIdentityVerificationSuccessEmail(to: string, firstName: string): Promise<void> {
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
+  await sendTemplatedEmail({
     to,
     subject: 'Identity verified on Axios Pay ✅',
     html: `
