@@ -39,6 +39,21 @@ const TRANSIENT_ERROR_CODES = new Set([
   'ESOCKET',
 ]);
 
+function applyGmailTransportOverrides<T extends SMTPPool.Options | SMTPTransport.Options>(
+  transportOptions: T
+): T {
+  if (!IS_GMAIL_SMTP) {
+    return transportOptions;
+  }
+
+  return {
+    ...transportOptions,
+    port: 465,
+    secure: true,
+    requireTLS: false,
+  };
+}
+
 function createPooledTransporter(): Transporter {
   const transportOptions: SMTPPool.Options = {
     ...GMAIL_SERVICE_CONFIG,
@@ -62,16 +77,7 @@ function createPooledTransporter(): Transporter {
     },
   };
 
-  return nodemailer.createTransport(
-    IS_GMAIL_SMTP
-      ? {
-        ...transportOptions,
-        port: 465,
-        secure: true,
-        requireTLS: false,
-      }
-      : transportOptions
-  );
+  return nodemailer.createTransport(applyGmailTransportOverrides(transportOptions));
 }
 
 function createSingleShotTransporter(): Transporter {
@@ -94,16 +100,7 @@ function createSingleShotTransporter(): Transporter {
     },
   };
 
-  return nodemailer.createTransport(
-    IS_GMAIL_SMTP
-      ? {
-        ...transportOptions,
-        port: 465,
-        secure: true,
-        requireTLS: false,
-      }
-      : transportOptions
-  );
+  return nodemailer.createTransport(applyGmailTransportOverrides(transportOptions));
 }
 
 const pooledTransporter = SHOULD_USE_POOL ? createPooledTransporter() : createSingleShotTransporter();
