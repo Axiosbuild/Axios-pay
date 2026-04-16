@@ -15,9 +15,8 @@ type SMTPError = Error & {
 const EMAIL_SCHEMA = z.string().trim().email();
 const GMAIL_APP_PASSWORD_FORMAT_REGEX = /^[A-Za-z0-9]{16}$/;
 const MAX_RETRY_ATTEMPTS = 3;
-const INITIAL_BACKOFF_MS = 500;
-const MAX_BACKOFF_JITTER_MS = 200;
-const MAX_BACKOFF_MS = 8000;
+// Fixed 1s retry delay keeps retry latency bounded so total send time stays within function timeout budgets.
+const RETRY_DELAY_MS = 1000;
 
 const SMTP_HOST = env.SMTP_HOST;
 const SMTP_PORT = env.SMTP_PORT;
@@ -49,9 +48,9 @@ function createPooledTransporter(): Transporter {
     pool: true,
     maxConnections: env.SMTP_MAX_CONNECTIONS,
     maxMessages: env.SMTP_MAX_MESSAGES,
-    connectionTimeout: env.SMTP_TIMEOUT_MS,
+    connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: env.SMTP_TIMEOUT_MS,
-    socketTimeout: env.SMTP_TIMEOUT_MS,
+    socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
     tls: {
       minVersion: 'TLSv1.2',
       rejectUnauthorized: true,
@@ -71,9 +70,9 @@ function createSingleShotTransporter(): Transporter {
       user: SMTP_USER,
       pass: SMTP_PASS,
     },
-    connectionTimeout: env.SMTP_TIMEOUT_MS,
+    connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: env.SMTP_TIMEOUT_MS,
-    socketTimeout: env.SMTP_TIMEOUT_MS,
+    socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
     tls: {
       minVersion: 'TLSv1.2',
       rejectUnauthorized: true,
@@ -89,11 +88,6 @@ let hasVerifiedConnection = false;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function backoffDelay(attempt: number): number {
-  const jitter = Math.floor(Math.random() * MAX_BACKOFF_JITTER_MS);
-  return Math.min(MAX_BACKOFF_MS, INITIAL_BACKOFF_MS * 2 ** (attempt - 1) + jitter);
 }
 
 function htmlToText(html: string): string {
@@ -165,6 +159,9 @@ async function verifyConnectionIfNeeded(): Promise<void> {
   try {
     await pooledTransporter.verify();
     hasVerifiedConnection = true;
+    console.log('SMTP transporter verification succeeded', {
+      pooled: env.SMTP_POOL,
+    });
   } catch (error) {
     const smtpError = error as SMTPError;
     console.warn('SMTP verification failed. Email send will continue with runtime fallback.', {
@@ -205,7 +202,7 @@ async function sendWithRetry(mailOptions: SendMailOptions): Promise<void> {
         throw primaryError;
       }
 
-      await sleep(backoffDelay(attempt));
+      await sleep(RETRY_DELAY_MS);
     }
   }
 }
@@ -241,7 +238,6 @@ async function sendTemplatedEmail(options: {
       subject: options.subject,
       smtpHost: SMTP_HOST,
       smtpPort: SMTP_PORT,
-      smtpUser: SMTP_USER,
       errorName: smtpError.name,
       errorMessage: smtpError.message,
       errorCode: smtpError.code,

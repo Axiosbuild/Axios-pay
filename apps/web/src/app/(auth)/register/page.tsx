@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -33,6 +34,7 @@ const step2Schema = step2BaseSchema
 
 type Step1 = z.infer<typeof step1Schema>;
 type Step2 = z.infer<typeof step2Schema>;
+const REGISTER_TIMEOUT_MS = 12000;
 
 export default function RegisterPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -46,6 +48,9 @@ export default function RegisterPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [emailDeliveryDelayed, setEmailDeliveryDelayed] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
   const router = useRouter();
 
   const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema) });
@@ -69,6 +74,7 @@ export default function RegisterPage() {
   async function onStep1(data: Step1) {
     console.log('[register] onStep1 submitted — advancing to step 2', data);
     setError('');
+    setInfo('');
     setStep1Data(data);
     form2.setValue('countryCode', NATIONALITY_TO_DIAL_CODE[data.nationality]);
     setStep(2);
@@ -90,12 +96,17 @@ export default function RegisterPage() {
     const phone = `${data.countryCode}${localPhone}`;
     setLoading(true);
     setError('');
+    setInfo('');
+    setEmailDeliveryDelayed(false);
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
+      const controller = new AbortController();
+      timeoutHandle = setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS);
       const result = await api.auth.register({
         ...step1Data,
         phone,
         password: data.password,
-      });
+      }, { signal: controller.signal });
       const userId = result.data?.userId as string | undefined;
 
       if (result.status === 204) {
@@ -116,6 +127,11 @@ export default function RegisterPage() {
         sessionStorage.setItem('verify_email', step1Data.email);
         sessionStorage.setItem('verify_userId', userId);
       }
+      const emailDelivery = (result.data?.emailDelivery as 'sent' | 'delayed' | undefined) ?? 'sent';
+      if (emailDelivery === 'delayed') {
+        setEmailDeliveryDelayed(true);
+        setInfo('Verification email delayed — check spam or tap resend below.');
+      }
       setRegisteredUserId(userId);
       setIdentityData({
         idNumber: '',
@@ -125,28 +141,50 @@ export default function RegisterPage() {
       });
       setStep(3);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
-      const code = e?.response?.data?.error || '';
-      if (code === 'VALIDATION_ERROR') {
-        const details = e?.response?.data?.details || [];
-        details.forEach((detail) => {
-          const field = detail.path?.[0];
-          if (!field || !detail.message) return;
-          if (field in step1Schema.shape) {
-            form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
-          } else if (field in step2BaseSchema.shape) {
-            form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
-          }
-        });
-        return;
+      if (axios.isAxiosError(err) && err.code === 'ERR_CANCELED') {
+        setError('Registration request timed out. Please try again or check spam if verification arrives later.');
+      } else {
+        const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
+        const code = e?.response?.data?.error || '';
+        if (code === 'VALIDATION_ERROR') {
+          const details = e?.response?.data?.details || [];
+          details.forEach((detail) => {
+            const field = detail.path?.[0];
+            if (!field || !detail.message) return;
+            if (field in step1Schema.shape) {
+              form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
+            } else if (field in step2BaseSchema.shape) {
+              form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
+            }
+          });
+          return;
+        }
+        const messages: Record<string, string> = {
+          EMAIL_EXISTS: 'This email is already registered. Try logging in instead.',
+          PHONE_EXISTS: 'This phone number is already registered.',
+        };
+        setError(messages[code] || 'Registration failed. Please check your details and try again.');
       }
-      const messages: Record<string, string> = {
-        EMAIL_EXISTS: 'This email is already registered. Try logging in instead.',
-        PHONE_EXISTS: 'This phone number is already registered.',
-      };
-      setError(messages[code] || 'Registration failed. Please check your details and try again.');
     } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
       setLoading(false);
+    }
+  }
+
+  async function handleResendVerificationEmail() {
+    if (!registeredUserId || resendingEmail) return;
+    setResendingEmail(true);
+    setError('');
+    try {
+      await api.auth.resendOTP({ userId: registeredUserId });
+      setInfo('Verification email sent. Please check your inbox and spam folder.');
+      setEmailDeliveryDelayed(false);
+    } catch {
+      setError('Failed to resend verification email. Please try again in a moment.');
+    } finally {
+      setResendingEmail(false);
     }
   }
 
@@ -191,6 +229,9 @@ export default function RegisterPage() {
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>
+      )}
+      {info && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-btn text-sm text-text-primary">{info}</div>
       )}
 
       {step === 1 ? (
@@ -271,6 +312,21 @@ export default function RegisterPage() {
         </form>
       ) : (
         <div className="space-y-4">
+          {emailDeliveryDelayed && (
+            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-btn">
+              <p className="text-sm text-text-primary">
+                Verification email delayed — click resend to retry delivery.
+              </p>
+              <button
+                type="button"
+                className="mt-2 text-sm text-brand-amber hover:underline"
+                onClick={handleResendVerificationEmail}
+                disabled={resendingEmail}
+              >
+                {resendingEmail ? 'Resending...' : 'Resend verification email'}
+              </button>
+            </div>
+          )}
           <p className="text-sm text-text-secondary">
             Verify your identity now to unlock higher limits immediately, or skip and do it later in your dashboard.
           </p>
