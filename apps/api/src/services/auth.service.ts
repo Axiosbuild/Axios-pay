@@ -452,7 +452,23 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   const magicToken = crypto.randomBytes(32).toString('hex');
   await storeOTP(`email:${user.id}`, otp, OTP_TTL);
   await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
-  await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
+
+  void (async () => {
+    try {
+      await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
+      console.log('Resend OTP verification email sent', { userId: user.id });
+    } catch (error) {
+      const smtpError = error as SMTPError;
+      const emailDomain = user.email.split('@')[1];
+      console.error('Resend OTP verification email dispatch failed (background)', {
+        userId: user.id,
+        emailDomain,
+        errorMessage: smtpError.message,
+        errorCode: smtpError.code,
+        responseCode: smtpError.responseCode,
+      });
+    }
+  })();
 
   return { userId: user.id };
 }
