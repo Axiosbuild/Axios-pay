@@ -10,8 +10,84 @@ import walletFundingRoutes from './routes/wallet-funding.routes';
 
 const app = express();
 
+const allowedOrigins = new Set([
+  env.FRONTEND_URL,
+  'https://axioslast-web.vercel.app',
+]);
+
+const normalizeRoutePath = (path: string): string => {
+  const normalized = path.replace(/\/+/g, '/');
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+};
+
+const getMountPathFromRegExp = (regexp: RegExp): string => {
+  const match = regexp.toString().match(/^\/\^\\\/(.+?)\\\/\?\(\?=\\\/\|\$\)\/i$/);
+  if (!match) {
+    return '';
+  }
+  return `/${match[1].replace(/\\\//g, '/')}`;
+};
+
+type RouteLayer = {
+  route?: {
+    path: string | string[];
+    methods: Record<string, boolean>;
+  };
+  name?: string;
+  regexp?: RegExp;
+  handle?: {
+    stack?: RouteLayer[];
+  };
+};
+
+const collectRoutes = (stack: RouteLayer[], prefix = ''): string[] => {
+  const routes: string[] = [];
+
+  stack.forEach((layer) => {
+    if (layer.route) {
+      const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
+      const methods = Object.entries(layer.route.methods)
+        .filter(([, enabled]) => enabled)
+        .map(([method]) => method.toUpperCase());
+
+      methods.forEach((method) => {
+        paths.forEach((path) => {
+          routes.push(`${method} ${normalizeRoutePath(`${prefix}${path}`)}`);
+        });
+      });
+      return;
+    }
+
+    if (layer.name === 'router' && layer.handle?.stack) {
+      const mountPath = layer.regexp ? getMountPathFromRegExp(layer.regexp) : '';
+      routes.push(...collectRoutes(layer.handle.stack, `${prefix}${mountPath}`));
+    }
+  });
+
+  return routes;
+};
+
+const logRouteTree = (): void => {
+  const appStack = (app as { _router?: { stack?: RouteLayer[] } })._router?.stack;
+  if (!appStack) {
+    return;
+  }
+
+  const routes = collectRoutes(appStack).sort((a, b) => a.localeCompare(b));
+  console.log('📚 Registered routes:\n' + routes.join('\n'));
+};
+
 app.use(helmet());
-app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
+app.use(cors({
+  credentials: true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS blocked origin: ${origin}`));
+  },
+}));
 app.use(compression());
 app.use(morgan('combined'));
 
@@ -34,6 +110,7 @@ app.get('/', (_req: Request, res: Response) => {
 
 app.use('/api/v1', apiRoutes);
 app.use('/api', walletFundingRoutes);
+logRouteTree();
 
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'NOT_FOUND', message: 'The requested resource was not found' });
