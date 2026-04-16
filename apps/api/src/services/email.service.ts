@@ -1,7 +1,7 @@
 import { transporter } from '../config/mailer';
 import { env } from '../config/env';
 
-const EMAIL_FROM = '"AxiosPay" <info@axiospay.space>';
+const EMAIL_FROM = `"AxiosPay" <${env.SMTP_FROM}>`;
 
 async function sendTemplatedEmail(options: {
   to: string;

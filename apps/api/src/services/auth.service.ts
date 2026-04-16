@@ -47,8 +47,8 @@ export async function register(
   userId: string;
   message: string;
   requiresVerification: true;
-  emailDelivery: 'sent' | 'deferred';
-  emailSent: boolean;
+  emailDelivery: 'sent';
+  emailSent: true;
 }> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
@@ -60,8 +60,8 @@ export async function register(
           userId: string;
           message: string;
           requiresVerification: true;
-          emailDelivery: 'sent' | 'deferred';
-          emailSent: boolean;
+          emailDelivery: 'sent';
+          emailSent: true;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -148,7 +148,7 @@ export async function register(
       message: 'Registration successful',
       requiresVerification: true as const,
       emailDelivery,
-      emailSent: emailDelivery === 'sent',
+      emailSent: true as const,
     };
     if (idempotencyCacheKey) {
       await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
@@ -546,7 +546,7 @@ async function sendRegistrationVerificationEmail(
   otp: string,
   verificationLink: string,
   context?: RegisterContext
-): Promise<'sent' | 'deferred'> {
+): Promise<'sent'> {
   try {
     await sendEmailOTP(email, firstName, otp, verificationLink);
     console.log('Registration verification email sent', {
@@ -562,7 +562,11 @@ async function sendRegistrationVerificationEmail(
       vercelId: context?.vercelId,
       reason: error instanceof Error ? error.message : String(error),
     });
-    throw new Error('VERIFICATION_EMAIL_SEND_FAILED');
+    const sendFailureError = new Error('VERIFICATION_EMAIL_SEND_FAILED');
+    if (error instanceof Error) {
+      (sendFailureError as Error & { cause?: unknown }).cause = error;
+    }
+    throw sendFailureError;
   }
 }
 
