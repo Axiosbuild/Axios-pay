@@ -5,7 +5,14 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { redis } from '../config/redis';
 import { env } from '../config/env';
-import { generateOTP, storeOTP, verifyOTP } from './otp.service';
+import {
+  deleteVerificationValue,
+  generateOTP,
+  getVerificationValue,
+  storeOTP,
+  storeVerificationValue,
+  verifyOTP,
+} from './otp.service';
 import { sendEmailOTP, sendWelcomeEmail, sendPasswordResetOTP, sendLoginNotificationEmail } from './email.service';
 import * as twoFactorService from './twoFactor.service';
 
@@ -201,6 +208,7 @@ export async function verifyEmail(userId: string, otp: string): Promise<{ verifi
     },
   });
 
+  await deleteVerificationValue(`otp:email:${userId}`);
   await sendWelcomeEmail(user.email, user.firstName);
 
   return { verified: true };
@@ -237,7 +245,7 @@ export async function verifyEmailLink(
     },
   });
 
-  await redis.del(`otp:email:${userId}`);
+  await deleteVerificationValue(`otp:email:${userId}`);
   await sendWelcomeEmail(user.email, user.firstName);
 
   return { verified: true, userId };
@@ -409,19 +417,21 @@ export async function logout(token: string): Promise<void> {
 }
 
 export async function forgotPassword(email: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
   if (!user) return; // Don't reveal if user exists
 
   const otp = generateOTP();
   await storeOTP(`reset:${user.id}`, otp, RESET_OTP_TTL);
-  await redis.set(`reset:email:${email}`, user.id, 'EX', RESET_OTP_TTL);
+  await storeVerificationValue(`reset-email:${normalizedEmail}`, user.id, RESET_OTP_TTL);
 
   await sendPasswordResetOTP(user.email, user.firstName, otp);
 }
 
 export async function resetPassword(email: string, otp: string, newPassword: string): Promise<void> {
-  const userId = await redis.get(`reset:email:${email}`);
+  const normalizedEmail = email.trim().toLowerCase();
+  const userId = await getVerificationValue(`reset-email:${normalizedEmail}`);
   if (!userId) throw new Error('OTP_EXPIRED');
 
   await verifyOTP(`reset:${userId}`, otp);
@@ -436,7 +446,7 @@ export async function resetPassword(email: string, otp: string, newPassword: str
     prisma.session.deleteMany({ where: { userId } }),
   ]);
 
-  await redis.del(`reset:email:${email}`);
+  await deleteVerificationValue(`reset-email:${normalizedEmail}`);
 }
 
 export async function resendOTP(input: { userId?: string; email?: string }): Promise<{ userId: string }> {
@@ -533,7 +543,7 @@ export async function verifyEmailToken(token: string): Promise<{ verified: boole
     },
   });
 
-  await redis.del(`otp:email:${user.id}`);
+  await deleteVerificationValue(`otp:email:${user.id}`);
   await sendWelcomeEmail(user.email, user.firstName);
 
   return { verified: true, userId: user.id };
