@@ -119,7 +119,16 @@ export default function RegisterPage() {
       router.push('/verify-email');
       return;
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
+      const e = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string;
+            error?: string;
+            details?: Array<{ path?: string[]; message?: string }>;
+          };
+        };
+      };
       const code = e?.response?.data?.error || '';
       if (code === 'VALIDATION_ERROR') {
         const details = e?.response?.data?.details || [];
