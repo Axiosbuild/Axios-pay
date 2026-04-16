@@ -158,6 +158,7 @@ export async function register(
       message: 'Registration successful',
       requiresVerification: true as const,
       emailDelivery: 'queued' as const,
+      // Verification email is dispatched asynchronously after this response is returned.
       emailSent: false as const,
     };
     if (idempotencyCacheKey) {

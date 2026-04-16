@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import * as authController from '../controllers/auth.controller';
 
 const router = Router();
+// Keep auth timeout comfortably above SMTP fast-fail budget (5s send timeout + retries/fallback).
 const AUTH_ROUTE_TIMEOUT_MS = 15_000;
 
 const authLimiter = rateLimit({
@@ -11,6 +12,7 @@ const authLimiter = rateLimit({
   message: { error: 'RATE_LIMIT', message: 'Too many attempts. Try again in 15 minutes.' },
 });
 
+// Apply timeout before route handlers so auth requests have a minimum execution window.
 router.use((req, res, next) => {
   req.setTimeout(AUTH_ROUTE_TIMEOUT_MS);
   res.setTimeout(AUTH_ROUTE_TIMEOUT_MS);

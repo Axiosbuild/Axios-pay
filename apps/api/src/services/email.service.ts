@@ -23,7 +23,8 @@ const SMTP_HOST = env.SMTP_HOST;
 const SMTP_PORT = env.SMTP_PORT;
 const SMTP_SECURE = SMTP_PORT === 465 ? true : env.SMTP_SECURE;
 const SMTP_REQUIRE_TLS = SMTP_PORT === 587;
-const IS_GMAIL_SMTP = SMTP_HOST.toLowerCase() === 'smtp.gmail.com';
+const IS_GMAIL_SMTP = (SMTP_HOST ?? '').toLowerCase() === 'smtp.gmail.com';
+const GMAIL_SERVICE_CONFIG = IS_GMAIL_SMTP ? { service: 'gmail' as const } : {};
 const SHOULD_USE_POOL = env.SMTP_POOL && !IS_GMAIL_SMTP;
 const SMTP_USER = env.SMTP_USER.trim();
 const SMTP_PASS = env.SMTP_PASS.trim();
@@ -40,7 +41,7 @@ const TRANSIENT_ERROR_CODES = new Set([
 
 function createPooledTransporter(): Transporter {
   const transportOptions: SMTPPool.Options = {
-    ...(IS_GMAIL_SMTP ? { service: 'gmail' } : {}),
+    ...GMAIL_SERVICE_CONFIG,
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
@@ -66,7 +67,7 @@ function createPooledTransporter(): Transporter {
 
 function createSingleShotTransporter(): Transporter {
   const transportOptions: SMTPTransport.Options = {
-    ...(IS_GMAIL_SMTP ? { service: 'gmail' } : {}),
+    ...GMAIL_SERVICE_CONFIG,
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
@@ -206,17 +207,17 @@ async function verifyConnectionIfNeeded(): Promise<void> {
 
 async function sendWithRetry(mailOptions: SendMailOptions): Promise<void> {
   for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
-      try {
-        await verifyConnectionIfNeeded();
-        await sendMailWithTimeout(pooledTransporter, mailOptions);
-        return;
-      } catch (pooledError) {
-        const primaryError = pooledError as SMTPError;
+    try {
+      await verifyConnectionIfNeeded();
+      await sendMailWithTimeout(pooledTransporter, mailOptions);
+      return;
+    } catch (pooledError) {
+      const primaryError = pooledError as SMTPError;
 
-        if (attempt === 1) {
-          try {
-            await sendMailWithTimeout(singleShotTransporter, mailOptions);
-            return;
+      if (attempt === 1) {
+        try {
+          await sendMailWithTimeout(singleShotTransporter, mailOptions);
+          return;
         } catch (fallbackError) {
           const smtpFallbackError = fallbackError as SMTPError;
           console.warn('Pooled SMTP send failed; single-shot fallback also failed.', {
