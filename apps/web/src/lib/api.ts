@@ -1,7 +1,19 @@
 'use client';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
+const API_V1_PREFIX = '/api/v1';
+const API_PREFIX = '/api';
+
+const withPrefix = (prefix: string, path: string): string => {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix
+    ? normalizedPath
+    : `${prefix}${normalizedPath}`;
+};
 
 let isRefreshing = false;
 let failedQueue: Array<{
@@ -18,17 +30,26 @@ function processQueue(error: unknown, token: string | null): void {
 }
 
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: `${API_URL}/api/v1`,
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 });
 
 export const fundingClient: AxiosInstance = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: API_BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+const refreshClient: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 });
 
 // Request interceptor — attach access token
 apiClient.interceptors.request.use((config) => {
+  if (config.url) {
+    config.url = withPrefix(API_V1_PREFIX, config.url);
+  }
+
   if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem('axiospay-auth');
@@ -42,6 +63,13 @@ apiClient.interceptors.request.use((config) => {
     } catch {
       // ignore
     }
+  }
+  return config;
+});
+
+fundingClient.interceptors.request.use((config) => {
+  if (config.url) {
+    config.url = withPrefix(API_PREFIX, config.url);
   }
   return config;
 });
@@ -78,7 +106,7 @@ apiClient.interceptors.response.use(
 
         if (!refreshToken) throw new Error('No refresh token');
 
-        const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, { refreshToken });
+        const response = await refreshClient.post(withPrefix(API_V1_PREFIX, '/auth/refresh'), { refreshToken });
         const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
 
         // Update store
