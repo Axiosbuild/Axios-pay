@@ -22,11 +22,13 @@ export async function sendEmailOTP(
     ? `${env.FRONTEND_URL}/verify-email?token=${magicToken}&userId=${userId}`
     : null;
 
-  await transporter.sendMail({
-    from: `"Axios Pay" <${env.SMTP_USER}>`,
-    to,
-    subject: 'Verify your Axios Pay email',
-    html: `
+  const subject = 'Verify your Axios Pay email';
+  try {
+    await transporter.sendMail({
+      from: `"Axios Pay" <${env.SMTP_USER}>`,
+      to,
+      subject,
+      html: `
       <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #FDF8F3;">
         <h1 style="color: #1A2332; font-family: Playfair Display, serif; margin-bottom: 8px;">Axios Pay</h1>
         <p style="color: #9AA3AE; font-size: 12px; margin-bottom: 32px;">Cross-Border FX, Unlocked.</p>
@@ -54,7 +56,28 @@ export async function sendEmailOTP(
         <p style="color: #9AA3AE; font-size: 12px;">Axios Pay — Cross-Border FX, Unlocked.</p>
       </div>
     `,
-  });
+    });
+  } catch (error) {
+    const smtpError = error as Error & {
+      code?: string;
+      command?: string;
+      responseCode?: number;
+      response?: string;
+    };
+    console.error('Failed to send registration verification email', {
+      to,
+      subject,
+      smtpUser: env.SMTP_USER,
+      errorName: smtpError.name,
+      errorMessage: smtpError.message,
+      errorCode: smtpError.code,
+      responseCode: smtpError.responseCode,
+      command: smtpError.command,
+      response: smtpError.response,
+      stack: smtpError.stack,
+    });
+    throw error;
+  }
 }
 
 export async function sendWelcomeEmail(to: string, firstName: string): Promise<void> {
