@@ -64,4 +64,9 @@ router.post('/reset-password', authController.resetPassword);
 router.post('/resend-otp', authLimiter, authController.resendOTP);
 router.post('/2fa/verify', authLimiter, authController.verify2FALogin);
 
+// New Nodemailer-backed verification endpoints
+router.post('/send-verification', authLimiter, authController.sendVerification);
+router.post('/verify-code', authLimiter, authController.verifyCode);
+router.post('/verify-email-token', authLimiter, authController.verifyEmailToken);
+
 export default router;

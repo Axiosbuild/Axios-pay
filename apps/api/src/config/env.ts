@@ -25,25 +25,11 @@ const envSchema = z.object({
   NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE: z.string().min(1).default('placeholder-merchant-code'),
   NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID: z.string().min(1).default('placeholder-pay-item-id'),
   INTERSWITCH_WEBHOOK_SECRET: z.string().min(1).default(generatedWebhookSecret),
-  RESEND_API_KEY: z.string().min(1).default('placeholder-resend-api-key'),
-  EMAIL_FROM: z.string().email().default('onboarding@resend.dev'),
-  SMTP_HOST: z.string().default('smtp.gmail.com'),
-  SMTP_PORT: z.coerce.number().refine((value) => value === 465 || value === 587, {
-    message: 'SMTP_PORT must be 465 (SSL) or 587 (STARTTLS).',
-  }).default(465),
-  SMTP_SECURE: z.coerce.boolean().default(true),
-  SMTP_USER: z.string().email().default('axiosbuild@gmail.com'),
-  SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
-  SMTP_REPLY_TO: z.string().email().optional(),
-  SMTP_POOL: z.coerce.boolean().default(false),
-  SMTP_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(20).default(5),
-  SMTP_MAX_MESSAGES: z.coerce.number().int().min(1).max(500).default(100),
-  SMTP_TIMEOUT_MS: z.coerce.number().int().min(5000).default(10000), // SMTP greeting timeout (server hello)
-  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(1000).default(5000), // TCP connect timeout
-  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10000), // socket inactivity timeout
   TWILIO_ACCOUNT_SID: z.string().min(1).default('placeholder-twilio-sid'),
   TWILIO_AUTH_TOKEN: z.string().min(1).default('placeholder-twilio-token'),
   TWILIO_PHONE_NUMBER: z.string().min(1).default('placeholder-twilio-number'),
+  SMTP_USER: z.string().email().default('info@axiospay.space'),
+  SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
   FRONTEND_URL: z
     .string()
     .url()
@@ -87,19 +73,8 @@ const defaultedKeys = [
   'NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE',
   'NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID',
   'INTERSWITCH_WEBHOOK_SECRET',
-  'RESEND_API_KEY',
-  'EMAIL_FROM',
-  'SMTP_HOST',
-  'SMTP_PORT',
-  'SMTP_SECURE',
+  'SMTP_USER',
   'SMTP_PASS',
-  'SMTP_REPLY_TO',
-  'SMTP_POOL',
-  'SMTP_MAX_CONNECTIONS',
-  'SMTP_MAX_MESSAGES',
-  'SMTP_TIMEOUT_MS',
-  'SMTP_CONNECTION_TIMEOUT_MS',
-  'SMTP_SOCKET_TIMEOUT_MS',
   'ENCRYPTION_KEY',
   'ADMIN_EMAIL',
   'EXCHANGE_RATE_API_KEY',

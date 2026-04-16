@@ -1,37 +1,7 @@
-import crypto from 'crypto';
-import { Resend } from 'resend';
-import { z } from 'zod';
+import { transporter } from '../config/mailer';
 import { env } from '../config/env';
 
-type SMTPError = Error & {
-  code?: string;
-  command?: string;
-  responseCode?: number;
-  response?: string;
-};
-
-const EMAIL_SCHEMA = z.string().trim().email();
-const resend = new Resend(env.RESEND_API_KEY);
-const EMAIL_FROM = env.EMAIL_FROM;
-
-function htmlToText(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
-
-function sanitizeSMTPResponse(response: string | undefined): string | undefined {
-  if (!response) {
-    return undefined;
-  }
-
-  return response.replace(/\s+/g, ' ').slice(0, 200);
-}
+const EMAIL_FROM = `"AxiosPay" <${env.SMTP_USER}>`;
 
 async function sendTemplatedEmail(options: {
   to: string;
@@ -39,64 +9,42 @@ async function sendTemplatedEmail(options: {
   html: string;
   text?: string;
 }): Promise<void> {
-  const recipient = EMAIL_SCHEMA.parse(options.to);
-
-  try {
-    await resend.emails.send({
-      from: EMAIL_FROM,
-      to: recipient,
-      subject: options.subject,
-      html: options.html,
-      text: options.text ?? htmlToText(options.html),
-      headers: {
-        'X-Message-Reference-ID': crypto.randomUUID(),
-      },
-    });
-  } catch (error) {
-    const smtpError = error as SMTPError;
-    console.error('Failed to send email', {
-      to: recipient,
-      subject: options.subject,
-      errorName: smtpError.name,
-      errorMessage: smtpError.message,
-      errorCode: smtpError.code,
-      responseCode: smtpError.responseCode,
-      command: smtpError.command,
-      response: sanitizeSMTPResponse(smtpError.response),
-      stack: smtpError.stack,
-    });
-    throw error;
-  }
+  await transporter.sendMail({
+    from: EMAIL_FROM,
+    to: options.to,
+    subject: options.subject,
+    html: options.html,
+    text: options.text,
+  });
 }
 
 export async function sendEmailOTP(
   to: string,
   firstName: string,
   otp: string,
-  magicToken?: string,
-  userId?: string
+  verificationLink?: string
 ): Promise<void> {
-  const magicLink =
-    magicToken && userId ? `${env.FRONTEND_URL}/verify-email?token=${magicToken}&userId=${userId}` : null;
-
   const subject = 'Verify your Axios Pay email';
   await sendTemplatedEmail({
     to,
     subject,
     html: `
-      <div style="font-family: DM Sans, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #FDF8F3;">
-        <h1 style="color: #1A2332; font-family: Playfair Display, serif; margin-bottom: 8px;">Axios Pay</h1>
+      <div style="font-family: DM Sans, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #FDF8F3;">
+        <h1 style="color: #1A2332; font-family: Georgia, serif; margin-bottom: 8px;">Axios Pay</h1>
         <p style="color: #9AA3AE; font-size: 12px; margin-bottom: 32px;">Cross-Border FX, Unlocked.</p>
 
         <h2 style="color: #1A2332;">Hi ${firstName}, verify your email</h2>
         <p style="color: #5A6474;">You're almost there! Verify your email to activate your Axios Pay account.</p>
 
-        ${magicLink ? `
+        ${verificationLink ? `
         <div style="margin: 32px 0;">
-          <a href="${magicLink}"
+          <a href="${verificationLink}"
              style="background: #C8772A; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block;">
-            ✓ Click to Verify Email
+            ✓ Verify Email
           </a>
+          <p style="color: #9AA3AE; font-size: 12px; margin-top: 8px;">
+            Or copy this link: <a href="${verificationLink}" style="color: #C8772A;">${verificationLink}</a>
+          </p>
         </div>` : ''}
 
         <p style="color: #5A6474; margin-top: 32px;">Or enter this 6-digit code manually:</p>
@@ -106,11 +54,13 @@ export async function sendEmailOTP(
 
         <p style="color: #5A6474; font-size: 14px;">This code and link expire in <strong>10 minutes</strong>.</p>
         <p style="color: #5A6474; font-size: 14px;">If you didn't create an Axios Pay account, ignore this email.</p>
+        <p style="color: #5A6474; font-size: 14px;">Need help? Email us at <a href="mailto:info@axiospay.space" style="color: #C8772A;">info@axiospay.space</a></p>
 
         <hr style="border: none; border-top: 1px solid #E5E1DA; margin: 32px 0;">
         <p style="color: #9AA3AE; font-size: 12px;">Axios Pay — Cross-Border FX, Unlocked.</p>
       </div>
     `,
+    text: `Hi ${firstName},\n\nVerify your Axios Pay email.\n\nYour 6-digit code: ${otp}\n\n${verificationLink ? `Or click this link: ${verificationLink}\n\n` : ''}This code expires in 10 minutes.\n\nIf you didn't create an account, ignore this email.\n\nAxios Pay — info@axiospay.space`,
   });
 }
 

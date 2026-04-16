@@ -51,10 +51,48 @@ function VerifyEmailPageContent() {
   }, [otp, userId]);
 
   useEffect(() => {
-    if (!token || !userId || loading) return;
-    void verifyMagicLink(token, userId);
+    // New JWT-based token (no userId in URL) — calls verify-email-token endpoint.
+    if (token && !userIdFromUrl && !loading) {
+      void verifyJWTToken(token);
+      return;
+    }
+    // Legacy magic link with userId in URL — calls verify-email-link endpoint.
+    if (token && userIdFromUrl && !loading) {
+      void verifyMagicLink(token, userIdFromUrl);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, userId]);
+  }, [token, userIdFromUrl]);
+
+  async function verifyJWTToken(jwtToken: string) {
+    setLoading(true);
+    setError('');
+    setInfo('');
+    try {
+      const res = await api.auth.verifyEmailToken({ token: jwtToken });
+      if (res.data?.verified) {
+        const resolvedUserId = res.data?.userId as string | undefined;
+        if (resolvedUserId && typeof window !== 'undefined') {
+          sessionStorage.setItem('verify_userId', resolvedUserId);
+        }
+        router.push('/login?verified=true');
+        return;
+      }
+      setError('Verification link is invalid or expired. Please request a new one.');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; message?: string } } };
+      const code = e?.response?.data?.error || '';
+      if (code === 'EMAIL_ALREADY_VERIFIED') {
+        router.push('/login');
+        return;
+      }
+      setError(
+        e?.response?.data?.message ||
+        'Verification link is invalid or expired. Please request a new one.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function verifyMagicLink(magicToken: string, id: string) {
     setLoading(true);
@@ -127,13 +165,19 @@ function VerifyEmailPageContent() {
     setError('');
     setInfo('');
     try {
-      const payload = userId ? { userId } : { email: emailInput };
-      if (!payload.userId && !emailInput) {
+      const email = storedEmail || emailInput;
+      if (!email && !userId) {
         setError('Enter your email to resend verification.');
         return;
       }
-      const response = await api.auth.resendOTP(payload);
-      const resolvedUserId = response.data?.userId as string | undefined;
+      let resolvedUserId: string | undefined;
+      if (email) {
+        const response = await api.auth.sendVerification({ email });
+        resolvedUserId = response.data?.userId as string | undefined;
+      } else {
+        const response = await api.auth.resendOTP({ userId });
+        resolvedUserId = response.data?.userId as string | undefined;
+      }
       if (resolvedUserId && typeof window !== 'undefined') {
         sessionStorage.setItem('verify_userId', resolvedUserId);
       }
