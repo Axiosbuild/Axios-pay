@@ -26,7 +26,7 @@ COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/prisma ./prisma
 COPY apps/api/package*.json ./
 
-RUN npm install --production
+RUN npm install --omit=dev
 RUN npx prisma generate
 
 EXPOSE 3001

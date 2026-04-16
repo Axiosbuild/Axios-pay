@@ -1,9 +1,10 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
-export default function VerifyPage() {
+function VerifyPageContent() {
   const params = useSearchParams();
   const token = params.get('token');
   const userId = params.get('userId');
@@ -61,5 +62,13 @@ export default function VerifyPage() {
       {message ? <p className="mt-4 text-sm text-success">{message}</p> : null}
       {error ? <p className="mt-4 text-sm text-error">{error}</p> : null}
     </div>
+  );
+}
+
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<div className="max-w-md mx-auto mt-12 p-6">Loading...</div>}>
+      <VerifyPageContent />
+    </Suspense>
   );
 }
