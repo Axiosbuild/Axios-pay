@@ -11,10 +11,26 @@ import walletFundingRoutes from './routes/wallet-funding.routes';
 const app = express();
 app.set('trust proxy', 1);
 
+const frontendOriginFromProcessEnv = process.env.FRONTEND_URL
+  ? new URL(process.env.FRONTEND_URL).origin
+  : undefined;
+
 const allowedOrigins = new Set([
-  env.FRONTEND_URL,
   'https://axioslast-web.vercel.app',
+  env.FRONTEND_URL,
+  frontendOriginFromProcessEnv,
 ]);
+
+const corsOptions: cors.CorsOptions = {
+  credentials: true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('CORS origin not allowed'));
+  },
+};
 
 const normalizeRoutePath = (path: string): string => {
   const normalized = path.replace(/\/+/g, '/');
@@ -80,16 +96,8 @@ const logRouteTree = (): void => {
 };
 
 app.use(helmet());
-app.use(cors({
-  credentials: true,
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.has(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(new Error('CORS origin not allowed'));
-  },
-}));
+app.use(cors(corsOptions));
+app.options('/api/v1/auth/*', cors(corsOptions));
 app.use(compression());
 app.use(morgan('combined'));
 
