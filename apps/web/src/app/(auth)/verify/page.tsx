@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation';
 
 type VerifyPageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default function VerifyPage({ searchParams }: VerifyPageProps) {
+export default async function VerifyPage({ searchParams }: VerifyPageProps) {
+  const resolvedSearchParams = await searchParams;
   const params = new URLSearchParams();
 
-  Object.entries(searchParams ?? {}).forEach(([key, value]) => {
+  Object.entries(resolvedSearchParams ?? {}).forEach(([key, value]) => {
     if (typeof value === 'string') {
       params.set(key, value);
       return;
