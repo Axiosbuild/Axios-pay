@@ -140,12 +140,12 @@ export default function RegisterPage() {
         };
       };
       const code = e?.response?.data?.error || '';
-      const timeoutMessage = `${e?.message || ''}`.toLowerCase();
+      const lowerErrorMsg = (e?.message || '').toLowerCase();
       const requestTimedOut =
         !e?.response &&
-        (e?.code === 'ECONNABORTED' || timeoutMessage.includes('timeout') || timeoutMessage.includes('timed out'));
+        (e?.code === 'ECONNABORTED' || lowerErrorMsg.includes('timeout') || lowerErrorMsg.includes('timed out'));
       if (requestTimedOut) {
-        setError('Registration request timed out. Please try again or check spam if verification arrives later.');
+        setError('Registration request timed out. Your account may have been created—check email/spam before retrying.');
         setShowLoginLinkInError(false);
         return;
       }
