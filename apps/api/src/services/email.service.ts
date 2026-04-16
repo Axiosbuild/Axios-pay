@@ -62,7 +62,16 @@ function createPooledTransporter(): Transporter {
     },
   };
 
-  return nodemailer.createTransport(transportOptions);
+  return nodemailer.createTransport(
+    IS_GMAIL_SMTP
+      ? {
+        ...transportOptions,
+        port: 465,
+        secure: true,
+        requireTLS: false,
+      }
+      : transportOptions
+  );
 }
 
 function createSingleShotTransporter(): Transporter {
@@ -85,7 +94,16 @@ function createSingleShotTransporter(): Transporter {
     },
   };
 
-  return nodemailer.createTransport(transportOptions);
+  return nodemailer.createTransport(
+    IS_GMAIL_SMTP
+      ? {
+        ...transportOptions,
+        port: 465,
+        secure: true,
+        requireTLS: false,
+      }
+      : transportOptions
+  );
 }
 
 const pooledTransporter = SHOULD_USE_POOL ? createPooledTransporter() : createSingleShotTransporter();
