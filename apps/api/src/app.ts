@@ -11,15 +11,13 @@ import walletFundingRoutes from './routes/wallet-funding.routes';
 const app = express();
 app.set('trust proxy', 1);
 
-const frontendOriginFromProcessEnv = process.env.FRONTEND_URL
-  ? new URL(process.env.FRONTEND_URL).origin
-  : undefined;
+const frontendOriginFromProcessEnv = process.env.FRONTEND_URL;
 
 const allowedOrigins = new Set([
   'https://axioslast-web.vercel.app',
   env.FRONTEND_URL,
   frontendOriginFromProcessEnv,
-]);
+].filter((origin): origin is string => Boolean(origin)));
 
 const corsOptions: cors.CorsOptions = {
   credentials: true,
