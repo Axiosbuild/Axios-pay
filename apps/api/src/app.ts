@@ -9,6 +9,7 @@ import apiRoutes from './routes/index';
 import walletFundingRoutes from './routes/wallet-funding.routes';
 
 const app = express();
+app.set('trust proxy', 1);
 
 const allowedOrigins = new Set([
   env.FRONTEND_URL,
