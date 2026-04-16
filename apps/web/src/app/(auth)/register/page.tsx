@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -34,7 +33,6 @@ const step2Schema = step2BaseSchema
 
 type Step1 = z.infer<typeof step1Schema>;
 type Step2 = z.infer<typeof step2Schema>;
-const REGISTER_TIMEOUT_MS = 12000;
 
 export default function RegisterPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -48,6 +46,7 @@ export default function RegisterPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showLoginLinkInError, setShowLoginLinkInError] = useState(false);
   const [info, setInfo] = useState('');
   const [emailDeliveryDelayed, setEmailDeliveryDelayed] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
@@ -96,79 +95,65 @@ export default function RegisterPage() {
     const phone = `${data.countryCode}${localPhone}`;
     setLoading(true);
     setError('');
+    setShowLoginLinkInError(false);
     setInfo('');
     setEmailDeliveryDelayed(false);
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
-      const controller = new AbortController();
-      timeoutHandle = setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS);
       const result = await api.auth.register({
         ...step1Data,
         phone,
         password: data.password,
-      }, { signal: controller.signal });
+      });
       const userId = result.data?.userId as string | undefined;
-
-      if (result.status === 204) {
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('verify_email', step1Data.email);
-          sessionStorage.removeItem('verify_userId');
-        }
-        router.push('/verify-email');
-        return;
-      }
-
-      if (!userId) {
-        setError('Registration failed. Please try again.');
-        return;
-      }
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('verify_email', step1Data.email);
-        sessionStorage.setItem('verify_userId', userId);
-      }
-      const emailDelivery = (result.data?.emailDelivery as 'sent' | 'delayed' | undefined) ?? 'sent';
-      if (emailDelivery === 'delayed') {
-        setEmailDeliveryDelayed(true);
-        setInfo('Verification email delayed — check spam or tap resend below.');
-      }
-      setRegisteredUserId(userId);
-      setIdentityData({
-        idNumber: '',
-        firstName: step1Data.firstName,
-        lastName: step1Data.lastName,
-        dateOfBirth: '',
-      });
-      setStep(3);
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.code === 'ERR_CANCELED') {
-        setError('Registration request timed out. Please try again or check spam if verification arrives later.');
-      } else {
-        const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
-        const code = e?.response?.data?.error || '';
-        if (code === 'VALIDATION_ERROR') {
-          const details = e?.response?.data?.details || [];
-          details.forEach((detail) => {
-            const field = detail.path?.[0];
-            if (!field || !detail.message) return;
-            if (field in step1Schema.shape) {
-              form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
-            } else if (field in step2BaseSchema.shape) {
-              form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
-            }
-          });
-          return;
+        if (userId) {
+          sessionStorage.setItem('verify_userId', userId);
+          localStorage.setItem('axiospay_pending_userId', userId);
+        } else {
+          sessionStorage.removeItem('verify_userId');
+          localStorage.removeItem('axiospay_pending_userId');
         }
-        const messages: Record<string, string> = {
-          EMAIL_EXISTS: 'This email is already registered. Try logging in instead.',
-          PHONE_EXISTS: 'This phone number is already registered.',
-        };
-        setError(messages[code] || 'Registration failed. Please check your details and try again.');
       }
+      router.push('/verify-email');
+      return;
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
+      const code = e?.response?.data?.error || '';
+      if (code === 'VALIDATION_ERROR') {
+        const details = e?.response?.data?.details || [];
+        details.forEach((detail) => {
+          const field = detail.path?.[0];
+          if (!field || !detail.message) return;
+          if (field in step1Schema.shape) {
+            form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
+          } else if (field in step2BaseSchema.shape) {
+            form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
+          }
+        });
+        setShowLoginLinkInError(false);
+        return;
+      }
+      const status = e?.response?.status;
+      const backendMessage = `${e?.response?.data?.message || ''} ${e?.response?.data?.error || ''}`.toLowerCase();
+      if ((status === 400 || status === 409) && backendMessage.includes('email')) {
+        setError('This email is already registered. Try logging in or use a different email.');
+        setShowLoginLinkInError(true);
+        return;
+      }
+      if ((status === 400 || status === 409) && backendMessage.includes('phone')) {
+        setError('This phone number is already registered.');
+        setShowLoginLinkInError(false);
+        return;
+      }
+      const messages: Record<string, string> = {
+        EMAIL_EXISTS: 'This email is already registered. Try logging in instead.',
+        PHONE_EXISTS: 'This phone number is already registered.',
+      };
+      setError(messages[code] || 'Registration failed. Please check your details and try again.');
+      setShowLoginLinkInError(code === 'EMAIL_EXISTS');
     } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
       setLoading(false);
     }
   }
@@ -228,7 +213,15 @@ export default function RegisterPage() {
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">
+          <p>{error}</p>
+          {showLoginLinkInError ? (
+            <p className="mt-1">
+              Already have an account?{' '}
+              <Link href="/login" className="text-brand-amber hover:underline font-medium">Log in</Link>
+            </p>
+          ) : null}
+        </div>
       )}
       {info && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-btn text-sm text-text-primary">{info}</div>
@@ -289,6 +282,13 @@ export default function RegisterPage() {
             )}
           </div>
           <Input label="Password" type="password" {...form2.register('password')} error={form2.formState.errors.password?.message} />
+          <ul className="space-y-1 text-xs">
+            {passwordChecks.map((check) => (
+              <li key={check.label} className={check.met ? 'text-success' : 'text-error'}>
+                {check.met ? '✅' : '❌'} {check.label}
+              </li>
+            ))}
+          </ul>
           <Input
             label="Confirm Password"
             type="password"
@@ -300,13 +300,6 @@ export default function RegisterPage() {
               {confirmPasswordMatches ? '✅ Passwords match' : '❌ Passwords do not match'}
             </p>
           ) : null}
-          <ul className="space-y-1 text-xs">
-            {passwordChecks.map((check) => (
-              <li key={check.label} className={check.met ? 'text-success' : 'text-error'}>
-                {check.met ? '✅' : '❌'} {check.label}
-              </li>
-            ))}
-          </ul>
           <Button type="submit" loading={loading} disabled={loading} className="w-full">Create Account</Button>
           <Button type="button" variant="ghost" className="w-full" onClick={() => setStep(1)}>Back</Button>
         </form>

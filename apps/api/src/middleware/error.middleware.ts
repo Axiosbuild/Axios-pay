@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 
 const ERROR_MAP: Record<string, { status: number; message: string }> = {
-  EMAIL_EXISTS: { status: 409, message: 'An account with this email already exists' },
-  PHONE_EXISTS: { status: 409, message: 'An account with this phone number already exists' },
+  EMAIL_EXISTS: { status: 400, message: 'Email already registered' },
+  PHONE_EXISTS: { status: 400, message: 'Phone number already registered' },
+  NATIONAL_ID_EXISTS: { status: 400, message: 'National ID already registered' },
+  DUPLICATE_RESOURCE: { status: 400, message: 'A user with these details already exists' },
   INVALID_CREDENTIALS: { status: 401, message: 'Invalid email or password' },
   EMAIL_NOT_VERIFIED: { status: 403, message: 'Please verify your email before logging in' },
   OTP_EXPIRED: { status: 400, message: 'The verification code has expired. Please request a new one.' },

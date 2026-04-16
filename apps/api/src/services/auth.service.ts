@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { nanoid } from 'nanoid';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { redis } from '../config/redis';
 import { env } from '../config/env';
@@ -19,7 +20,7 @@ const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
 
 const OTP_TTL = 600; // 10 minutes
 const RESET_OTP_TTL = 900; // 15 minutes
-const EMAIL_SEND_TIMEOUT_MS = 8000;
+const REGISTER_IDEMPOTENCY_TTL_SECONDS = 60 * 10;
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
@@ -35,80 +36,148 @@ export interface RegisterInput {
   firstName: string;
   lastName: string;
   nationality: string;
+  nationalId?: string;
 }
 
 interface RegisterContext {
   requestId?: string;
   vercelId?: string;
+  idempotencyKey?: string;
 }
 
 export async function register(
   input: RegisterInput,
   context?: RegisterContext
-): Promise<{ userId: string; message: string; requiresVerification: true; emailDelivery: 'sent' | 'delayed' }> {
-  const existingEmail = await prisma.user.findUnique({ where: { email: input.email } });
-  if (existingEmail) throw new Error('EMAIL_EXISTS');
-
-  const existingPhone = await prisma.user.findUnique({ where: { phone: input.phone } });
-  if (existingPhone) throw new Error('PHONE_EXISTS');
-
-  const passwordHash = await bcrypt.hash(input.password, 12);
-
-  const nativeCurrency = NATIONALITY_CURRENCY_MAP[input.nationality.toUpperCase()];
-
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      phone: input.phone,
-      passwordHash,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      nationality: input.nationality.toUpperCase(),
-      wallets: {
-        create: [
-          { currency: 'NGN', balance: 0 },
-          ...(nativeCurrency && nativeCurrency !== 'NGN'
-            ? [{ currency: nativeCurrency, balance: 0 }]
-            : []),
-        ],
-      },
-    },
-  });
-
-  const emailOTP = generateOTP();
-  const magicToken = crypto.randomBytes(32).toString('hex');
-
-  await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
-  await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
-
-  let emailDelivery: 'sent' | 'delayed' = 'sent';
-  try {
-    await withTimeout(
-      sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id),
-      EMAIL_SEND_TIMEOUT_MS,
-      'EMAIL_SEND_TIMEOUT'
-    );
-  } catch (error) {
-    emailDelivery = 'delayed';
-    const smtpError = error as SMTPError;
-    const emailDomain = user.email.split('@')[1];
-    console.error('Registration verification email dispatch delayed', {
-      userId: user.id,
-      emailDomain,
-      requestId: context?.requestId,
-      vercelId: context?.vercelId,
-      errorMessage: smtpError.message,
-      errorCode: smtpError.code,
-      responseCode: smtpError.responseCode,
-    });
+): Promise<{ userId: string; message: string; requiresVerification: true; emailDelivery: 'queued' }> {
+  const idempotencyKey = context?.idempotencyKey?.trim();
+  const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
+  if (idempotencyCacheKey) {
+    const cachedResponse = await redis.get(idempotencyCacheKey);
+    if (cachedResponse) {
+      try {
+        return JSON.parse(cachedResponse) as {
+          userId: string;
+          message: string;
+          requiresVerification: true;
+          emailDelivery: 'queued';
+        };
+      } catch {
+        await redis.del(idempotencyCacheKey);
+      }
+    }
   }
 
-  return {
-    userId: user.id,
-    message: 'Registration successful',
-    requiresVerification: true,
-    emailDelivery,
-  };
+  try {
+    const passwordHash = await bcrypt.hash(input.password, 12);
+    const nativeCurrency = NATIONALITY_CURRENCY_MAP[input.nationality.toUpperCase()];
+
+    const user = await prisma.$transaction(
+      async (tx) => {
+        const existingUser = await tx.user.findFirst({
+          where: {
+            OR: [
+              { email: input.email },
+              { phone: input.phone },
+              ...(input.nationalId ? [{ nationalIdNumber: input.nationalId }] : []),
+            ],
+          },
+          select: { email: true, phone: true, nationalIdNumber: true },
+        });
+
+        if (existingUser?.email === input.email) {
+          throw new Error('EMAIL_EXISTS');
+        }
+        if (existingUser?.phone === input.phone) {
+          throw new Error('PHONE_EXISTS');
+        }
+        if (input.nationalId && existingUser?.nationalIdNumber === input.nationalId) {
+          throw new Error('NATIONAL_ID_EXISTS');
+        }
+
+        return tx.user.create({
+          data: {
+            email: input.email,
+            phone: input.phone,
+            passwordHash,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            nationality: input.nationality.toUpperCase(),
+            nationalIdNumber: input.nationalId,
+            wallets: {
+              create: [
+                { currency: 'NGN', balance: 0 },
+                ...(nativeCurrency && nativeCurrency !== 'NGN'
+                  ? [{ currency: nativeCurrency, balance: 0 }]
+                  : []),
+              ],
+            },
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+
+    const emailOTP = generateOTP();
+    const magicToken = crypto.randomBytes(32).toString('hex');
+
+    await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
+    await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
+
+    void (async () => {
+      try {
+        await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
+        console.log('Registration verification email sent', {
+          userId: user.id,
+          requestId: context?.requestId,
+          vercelId: context?.vercelId,
+        });
+      } catch (error) {
+        const smtpError = error as SMTPError;
+        const emailDomain = user.email.split('@')[1];
+        console.error('Registration verification email dispatch failed (background)', {
+          userId: user.id,
+          emailDomain,
+          requestId: context?.requestId,
+          vercelId: context?.vercelId,
+          errorMessage: smtpError.message,
+          errorCode: smtpError.code,
+          responseCode: smtpError.responseCode,
+        });
+      }
+    })();
+
+    const response = {
+      userId: user.id,
+      message: 'Registration successful',
+      requiresVerification: true as const,
+      emailDelivery: 'queued' as const,
+    };
+    if (idempotencyCacheKey) {
+      await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
+    }
+    return response;
+  } catch (error) {
+    const mappedErrorCode = mapRegisterErrorCode(error);
+    if (mappedErrorCode) {
+      if (!['EMAIL_EXISTS', 'PHONE_EXISTS', 'NATIONAL_ID_EXISTS'].includes(mappedErrorCode)) {
+        console.error('Registration failed with handled database error', {
+          errorCode: mappedErrorCode,
+          requestId: context?.requestId,
+          vercelId: context?.vercelId,
+        });
+      }
+      throw new Error(mappedErrorCode);
+    }
+
+    const unknownError = error as Error;
+    console.error('Registration failed with unhandled error', {
+      requestId: context?.requestId,
+      vercelId: context?.vercelId,
+      message: unknownError.message,
+      stack: unknownError.stack,
+    });
+    throw error;
+  }
 }
 
 export async function verifyEmail(userId: string, otp: string): Promise<{ verified: boolean }> {
@@ -379,27 +448,36 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   return { userId: user.id };
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutErrorCode: string): Promise<T> {
-  let timeoutHandle: NodeJS.Timeout | undefined;
-  const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutHandle = setTimeout(() => {
-      const timeoutError = new Error('Email service timeout') as SMTPError;
-      timeoutError.code = timeoutErrorCode;
-      reject(timeoutError);
-    }, timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
-}
-
 function signAccessToken(userId: string): string {
   return jwt.sign({ sub: userId, type: 'access' }, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_EXPIRY,
   } as jwt.SignOptions);
+}
+
+function mapRegisterErrorCode(error: unknown): string | null {
+  if (error instanceof Error && ['EMAIL_EXISTS', 'PHONE_EXISTS', 'NATIONAL_ID_EXISTS'].includes(error.message)) {
+    return error.message;
+  }
+
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  ) {
+    const target = Array.isArray(error.meta?.target) ? error.meta?.target.map(String) : [];
+    if (target.includes('email')) return 'EMAIL_EXISTS';
+    if (target.includes('phone')) return 'PHONE_EXISTS';
+    if (target.includes('nationalIdNumber')) return 'NATIONAL_ID_EXISTS';
+    return 'DUPLICATE_RESOURCE';
+  }
+
+  const pgError = error as { code?: string; detail?: string; constraint?: string };
+  if (pgError?.code === '23505') {
+    const detail = `${pgError.detail || ''} ${pgError.constraint || ''}`.toLowerCase();
+    if (detail.includes('email')) return 'EMAIL_EXISTS';
+    if (detail.includes('phone')) return 'PHONE_EXISTS';
+    if (detail.includes('nationalidnumber') || detail.includes('national id')) return 'NATIONAL_ID_EXISTS';
+    return 'DUPLICATE_RESOURCE';
+  }
+
+  return null;
 }

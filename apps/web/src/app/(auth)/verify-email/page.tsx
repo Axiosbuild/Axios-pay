@@ -17,11 +17,12 @@ function VerifyEmailPageContent() {
   const searchParams = useSearchParams();
 
   const userIdFromUrl = searchParams.get('userId');
+  const emailFromUrl = searchParams.get('email');
   const token = searchParams.get('token');
   const userIdFromStorage = typeof window !== 'undefined' ? sessionStorage.getItem('verify_userId') : null;
   const userId = userIdFromUrl || userIdFromStorage;
 
-  const storedEmail = typeof window !== 'undefined' ? sessionStorage.getItem('verify_email') || '' : '';
+  const storedEmail = emailFromUrl || (typeof window !== 'undefined' ? sessionStorage.getItem('verify_email') : null) || '';
   const maskedEmail = storedEmail
     ? storedEmail.replace(/^(.).*(@.+)$/, (_match, first, domain) => `${first}***${domain}`)
     : 'your email';
@@ -37,6 +38,12 @@ function VerifyEmailPageContent() {
       sessionStorage.setItem('verify_userId', userIdFromUrl);
     }
   }, [userIdFromUrl]);
+
+  useEffect(() => {
+    if (emailFromUrl && typeof window !== 'undefined') {
+      sessionStorage.setItem('verify_email', emailFromUrl);
+    }
+  }, [emailFromUrl]);
 
   useEffect(() => {
     if (otp.length === 6 && userId) handleVerify();

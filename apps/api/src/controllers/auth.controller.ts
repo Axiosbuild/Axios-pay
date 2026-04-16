@@ -10,6 +10,7 @@ const registerSchema: z.ZodType<RegisterInput> = z.object({
   firstName: z.string().min(1).max(50),
   lastName: z.string().min(1).max(50),
   nationality: z.enum(['NG', 'UG', 'KE', 'GH', 'ZA']),
+  nationalId: z.string().min(1).optional(),
 });
 
 const verifyEmailSchema = z.object({
@@ -63,10 +64,12 @@ export async function register(req: Request, res: Response, next: NextFunction):
     const data = registerSchema.parse(req.body);
     const requestIdHeader = req.headers['x-request-id'];
     const vercelIdHeader = req.headers['x-vercel-id'];
+    const idempotencyHeader = req.headers['x-idempotency-key'];
     const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
     const vercelId = Array.isArray(vercelIdHeader) ? vercelIdHeader[0] : vercelIdHeader;
+    const idempotencyKey = Array.isArray(idempotencyHeader) ? idempotencyHeader[0] : idempotencyHeader;
 
-    const result = await authService.register(data, { requestId, vercelId });
+    const result = await authService.register(data, { requestId, vercelId, idempotencyKey });
     res.status(201).json({
       success: true,
       message: 'Registration successful',

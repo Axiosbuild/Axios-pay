@@ -10,6 +10,39 @@ const authLimiter = rateLimit({
   message: { error: 'RATE_LIMIT', message: 'Too many attempts. Try again in 15 minutes.' },
 });
 
+/**
+ * @openapi
+ * /api/v1/auth/register:
+ *   post:
+ *     summary: Register a new user account
+ *     parameters:
+ *       - in: header
+ *         name: X-Idempotency-Key
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Optional key to safely retry the same registration request.
+ *     responses:
+ *       201:
+ *         description: Registration accepted
+ *       400:
+ *         description: Validation or duplicate registration error
+ *         content:
+ *           application/json:
+ *             examples:
+ *               duplicateEmail:
+ *                 value:
+ *                   error: EMAIL_EXISTS
+ *                   message: Email already registered
+ *               duplicatePhone:
+ *                 value:
+ *                   error: PHONE_EXISTS
+ *                   message: Phone number already registered
+ *       409:
+ *         description: Legacy duplicate conflict response (backward compatibility)
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/register', authLimiter, authController.register);
 router.post('/verify-email', authLimiter, authController.verifyEmail);
 router.get('/verify-email-link', authLimiter, authController.verifyEmailLink);
