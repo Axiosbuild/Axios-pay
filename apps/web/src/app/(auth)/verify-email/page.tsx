@@ -18,6 +18,7 @@ function VerifyEmailPageContent() {
 
   const userIdFromUrl = searchParams.get('userId');
   const emailFromUrl = searchParams.get('email');
+  const deliveryFromUrl = searchParams.get('delivery');
   const token = searchParams.get('token');
   const userIdFromStorage = typeof window !== 'undefined' ? sessionStorage.getItem('verify_userId') : null;
   const userId = userIdFromUrl || userIdFromStorage;
@@ -44,6 +45,12 @@ function VerifyEmailPageContent() {
       sessionStorage.setItem('verify_email', emailFromUrl);
     }
   }, [emailFromUrl]);
+
+  useEffect(() => {
+    if (deliveryFromUrl === 'deferred') {
+      setInfo('Email delivery is taking longer than expected. Check inbox/spam, or resend below.');
+    }
+  }, [deliveryFromUrl]);
 
   useEffect(() => {
     if (otp.length === 6 && userId) handleVerify();

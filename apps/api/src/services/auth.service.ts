@@ -47,8 +47,8 @@ export async function register(
   userId: string;
   message: string;
   requiresVerification: true;
-  emailDelivery: 'sent';
-  emailSent: true;
+  emailDelivery: 'sent' | 'deferred';
+  emailSent: boolean;
 }> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
@@ -60,8 +60,8 @@ export async function register(
           userId: string;
           message: string;
           requiresVerification: true;
-          emailDelivery: 'sent';
-          emailSent: true;
+          emailDelivery: 'sent' | 'deferred';
+          emailSent: boolean;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -134,19 +134,21 @@ export async function register(
     });
     await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
 
-    await sendEmailOTP(user.email, user.firstName, emailOTP, verificationLink);
-    console.log('Registration verification email sent', {
-      userId: user.id,
-      requestId: context?.requestId,
-      vercelId: context?.vercelId,
-    });
+    const emailDelivery = await sendRegistrationVerificationEmail(
+      user.id,
+      user.email,
+      user.firstName,
+      emailOTP,
+      verificationLink,
+      context
+    );
 
     const response = {
       userId: user.id,
       message: 'Registration successful',
       requiresVerification: true as const,
-      emailDelivery: 'sent' as const,
-      emailSent: true as const,
+      emailDelivery,
+      emailSent: emailDelivery === 'sent',
     };
     if (idempotencyCacheKey) {
       await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
@@ -535,6 +537,57 @@ export async function verifyEmailToken(token: string): Promise<{ verified: boole
   await sendWelcomeEmail(user.email, user.firstName);
 
   return { verified: true, userId: user.id };
+}
+
+async function sendRegistrationVerificationEmail(
+  userId: string,
+  email: string,
+  firstName: string,
+  otp: string,
+  verificationLink: string,
+  context?: RegisterContext
+): Promise<'sent' | 'deferred'> {
+  let settled = false;
+
+  const sendPromise = sendEmailOTP(email, firstName, otp, verificationLink)
+    .then(() => {
+      settled = true;
+      console.log('Registration verification email sent', {
+        userId,
+        requestId: context?.requestId,
+        vercelId: context?.vercelId,
+      });
+      return 'sent' as const;
+    })
+    .catch((error: unknown) => {
+      settled = true;
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('Registration verification email delivery deferred', {
+        userId,
+        requestId: context?.requestId,
+        vercelId: context?.vercelId,
+        reason: message,
+      });
+      return 'deferred' as const;
+    });
+
+  const timeoutResult = await Promise.race([
+    sendPromise,
+    new Promise<'deferred'>((resolve) => {
+      setTimeout(() => resolve('deferred'), env.SMTP_SEND_TIMEOUT_MS);
+    }),
+  ]);
+
+  if (timeoutResult === 'deferred' && !settled) {
+    console.warn('Registration verification email send timed out; delivery may complete later', {
+      userId,
+      requestId: context?.requestId,
+      vercelId: context?.vercelId,
+      timeoutMs: env.SMTP_SEND_TIMEOUT_MS,
+    });
+  }
+
+  return timeoutResult;
 }
 
 function signAccessToken(userId: string): string {

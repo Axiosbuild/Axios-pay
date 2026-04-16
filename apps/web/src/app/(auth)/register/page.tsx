@@ -105,6 +105,7 @@ export default function RegisterPage() {
         password: data.password,
       });
       const userId = result.data?.userId as string | undefined;
+      const emailDelivery = result.data?.emailDelivery as 'sent' | 'deferred' | undefined;
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('verify_email', step1Data.email);
@@ -116,10 +117,19 @@ export default function RegisterPage() {
           localStorage.removeItem('axiospay_pending_userId');
         }
       }
-      router.push('/verify-email');
+      const params = new URLSearchParams({ email: step1Data.email });
+      if (userId) {
+        params.set('userId', userId);
+      }
+      if (emailDelivery === 'deferred') {
+        params.set('delivery', 'deferred');
+      }
+      router.push(`/verify-email?${params.toString()}`);
       return;
     } catch (err: unknown) {
       const e = err as {
+        code?: string;
+        message?: string;
         response?: {
           status?: number;
           data?: {
@@ -130,6 +140,15 @@ export default function RegisterPage() {
         };
       };
       const code = e?.response?.data?.error || '';
+      const timeoutMessage = `${e?.message || ''}`.toLowerCase();
+      const requestTimedOut =
+        !e?.response &&
+        (e?.code === 'ECONNABORTED' || timeoutMessage.includes('timeout') || timeoutMessage.includes('timed out'));
+      if (requestTimedOut) {
+        setError('Registration request timed out. Please try again or check spam if verification arrives later.');
+        setShowLoginLinkInError(false);
+        return;
+      }
       if (code === 'VALIDATION_ERROR') {
         const details = e?.response?.data?.details || [];
         details.forEach((detail) => {
