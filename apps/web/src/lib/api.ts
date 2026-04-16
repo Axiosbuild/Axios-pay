@@ -154,6 +154,9 @@ export const api = {
     resetPassword: (data: unknown) => apiClient.post('/auth/reset-password', data),
     resendOTP: (data: unknown) => apiClient.post('/auth/resend-otp', data),
     verify2FA: (data: unknown) => apiClient.post('/auth/2fa/verify', data),
+    sendVerification: (data: unknown) => apiClient.post('/auth/send-verification', data),
+    verifyCode: (data: unknown) => apiClient.post('/auth/verify-code', data),
+    verifyEmailToken: (data: unknown) => apiClient.post('/auth/verify-email-token', data),
   },
   users: {
     getMe: () => apiClient.get('/users/me'),

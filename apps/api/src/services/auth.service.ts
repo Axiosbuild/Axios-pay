@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { nanoid } from 'nanoid';
 import { Prisma } from '@prisma/client';
@@ -18,9 +17,10 @@ const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
   ZA: 'ZAR',
 };
 
-const OTP_TTL = 600; // 10 minutes
+const OTP_TTL = 600; // 10 minutes in seconds
 const RESET_OTP_TTL = 900; // 15 minutes
 const REGISTER_IDEMPOTENCY_TTL_SECONDS = 60 * 10;
+const VERIFICATION_TOKEN_EXPIRY = '1h';
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
@@ -120,12 +120,21 @@ export async function register(
     );
 
     const emailOTP = generateOTP();
-    const magicToken = crypto.randomBytes(32).toString('hex');
+    const otpExpiry = new Date(Date.now() + OTP_TTL * 1000);
+    const verificationToken = signVerificationToken(user.id, user.email);
+    const verificationLink = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
+    // Store code in DB and keep Redis OTP for backward-compat code verification
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verificationCode: emailOTP,
+        verificationCodeExpiry: otpExpiry,
+      },
+    });
     await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
-    await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
 
-    await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
+    await sendEmailOTP(user.email, user.firstName, emailOTP, verificationLink);
     console.log('Registration verification email sent', {
       userId: user.id,
       requestId: context?.requestId,
@@ -172,14 +181,24 @@ export async function verifyEmail(userId: string, otp: string): Promise<{ verifi
   if (!user) throw new Error('USER_NOT_FOUND');
   if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
 
-  await verifyOTP(`email:${userId}`, otp);
+  // Check DB-stored verification code first; fall back to Redis for backward compat.
+  if (user.verificationCode !== null && user.verificationCodeExpiry !== null) {
+    if (user.verificationCode !== otp) throw new Error('OTP_INVALID');
+    if (user.verificationCodeExpiry < new Date()) throw new Error('OTP_EXPIRED');
+  } else {
+    await verifyOTP(`email:${userId}`, otp);
+  }
 
   await prisma.user.update({
     where: { id: userId },
-    data: { isEmailVerified: true, isPhoneVerified: true },
+    data: {
+      isEmailVerified: true,
+      isPhoneVerified: true,
+      verificationCode: null,
+      verificationCodeExpiry: null,
+    },
   });
 
-  await redis.del(`magic:${userId}`);
   await sendWelcomeEmail(user.email, user.firstName);
 
   return { verified: true };
@@ -196,24 +215,26 @@ export async function verifyEmailLink(
     return { verified: true, userId, alreadyVerified: true };
   }
 
-  const storedToken = await redis.get(`magic:${userId}`);
-  const storedBuffer = storedToken ? Buffer.from(storedToken, 'utf8') : null;
-  const providedBuffer = Buffer.from(token, 'utf8');
-  const isValidToken = Boolean(
-    storedBuffer &&
-      storedBuffer.length === providedBuffer.length &&
-      crypto.timingSafeEqual(storedBuffer, providedBuffer)
-  );
-  if (!isValidToken) {
+  // Verify JWT token (new flow) — userId in token must match path param.
+  try {
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as { type?: string; userId?: string; email?: string };
+    if (decoded.type !== 'email_verification' || decoded.userId !== userId) {
+      throw new Error('INVALID_TOKEN');
+    }
+  } catch {
     throw new Error('INVALID_TOKEN');
   }
 
   await prisma.user.update({
     where: { id: userId },
-    data: { isEmailVerified: true, isPhoneVerified: true },
+    data: {
+      isEmailVerified: true,
+      isPhoneVerified: true,
+      verificationCode: null,
+      verificationCodeExpiry: null,
+    },
   });
 
-  await redis.del(`magic:${userId}`);
   await redis.del(`otp:email:${userId}`);
   await sendWelcomeEmail(user.email, user.firstName);
 
@@ -427,20 +448,107 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
 
   const otp = generateOTP();
-  const magicToken = crypto.randomBytes(32).toString('hex');
-  await storeOTP(`email:${user.id}`, otp, OTP_TTL);
-  await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
+  const otpExpiry = new Date(Date.now() + OTP_TTL * 1000);
+  const verificationToken = signVerificationToken(user.id, user.email);
+  const verificationLink = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
-  await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      verificationCode: otp,
+      verificationCodeExpiry: otpExpiry,
+    },
+  });
+  await storeOTP(`email:${user.id}`, otp, OTP_TTL);
+
+  await sendEmailOTP(user.email, user.firstName, otp, verificationLink);
   console.log('Resend OTP verification email sent', { userId: user.id });
 
   return { userId: user.id };
+}
+
+// POST /api/v1/auth/send-verification — resend by email
+export async function sendVerification(email: string): Promise<{ message: string; userId: string }> {
+  const { userId } = await resendOTP({ email });
+  return { message: 'Verification email sent', userId };
+}
+
+// POST /api/v1/auth/verify-code — verify 6-digit code by email
+export async function verifyCode(email: string, code: string): Promise<{ verified: boolean }> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error('USER_NOT_FOUND');
+  if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
+
+  if (!user.verificationCode || !user.verificationCodeExpiry) {
+    // Fall back to Redis-based OTP if DB fields are not populated yet.
+    await verifyOTP(`email:${user.id}`, code);
+  } else {
+    if (user.verificationCode !== code) throw new Error('OTP_INVALID');
+    if (user.verificationCodeExpiry < new Date()) throw new Error('OTP_EXPIRED');
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      isEmailVerified: true,
+      isPhoneVerified: true,
+      verificationCode: null,
+      verificationCodeExpiry: null,
+    },
+  });
+
+  await sendWelcomeEmail(user.email, user.firstName);
+
+  return { verified: true };
+}
+
+// POST /api/v1/auth/verify-email-token — verify JWT token from email link
+export async function verifyEmailToken(token: string): Promise<{ verified: boolean; userId: string }> {
+  let decoded: { type?: string; userId?: string; email?: string };
+  try {
+    decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as { type?: string; userId?: string; email?: string };
+  } catch {
+    throw new Error('INVALID_TOKEN');
+  }
+
+  if (decoded.type !== 'email_verification' || !decoded.userId) {
+    throw new Error('INVALID_TOKEN');
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+  if (!user) throw new Error('USER_NOT_FOUND');
+  if (user.isEmailVerified) {
+    return { verified: true, userId: user.id };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      isEmailVerified: true,
+      isPhoneVerified: true,
+      verificationCode: null,
+      verificationCodeExpiry: null,
+    },
+  });
+
+  await redis.del(`otp:email:${user.id}`);
+  await sendWelcomeEmail(user.email, user.firstName);
+
+  return { verified: true, userId: user.id };
 }
 
 function signAccessToken(userId: string): string {
   return jwt.sign({ sub: userId, type: 'access' }, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_EXPIRY,
   } as jwt.SignOptions);
+}
+
+function signVerificationToken(userId: string, email: string): string {
+  return jwt.sign(
+    { type: 'email_verification', userId, email },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: VERIFICATION_TOKEN_EXPIRY } as jwt.SignOptions
+  );
 }
 
 function mapRegisterErrorCode(error: unknown): string | null {

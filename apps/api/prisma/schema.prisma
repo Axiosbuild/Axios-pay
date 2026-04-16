@@ -33,6 +33,8 @@ model User {
   idVerificationFailureReason String?
   isEmailVerified  Boolean     @default(false)
   isPhoneVerified  Boolean     @default(false)
+  verificationCode         String?
+  verificationCodeExpiry   DateTime?
   cardToken        String?
   cardTokenizedAt  DateTime?
   createdAt        DateTime    @default(now())

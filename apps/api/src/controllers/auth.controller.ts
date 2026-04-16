@@ -54,6 +54,19 @@ const verifyEmailLinkSchema = z.object({
   userId: z.string().min(1),
 });
 
+const sendVerificationSchema = z.object({
+  email: z.string().email(),
+});
+
+const verifyCodeSchema = z.object({
+  email: z.string().email(),
+  code: z.string().length(6),
+});
+
+const verifyEmailTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
 const verify2FASchema = z.object({
   tempToken: z.string().min(1),
   token: z.string().length(6),
@@ -227,6 +240,48 @@ export async function verify2FALogin(req: Request, res: Response, next: NextFunc
       req.headers['user-agent'],
       req.ip
     );
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function sendVerification(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email } = sendVerificationSchema.parse(req.body);
+    const result = await authService.sendVerification(email);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function verifyCode(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email, code } = verifyCodeSchema.parse(req.body);
+    const result = await authService.verifyCode(email, code);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function verifyEmailToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { token } = verifyEmailTokenSchema.parse(req.body);
+    const result = await authService.verifyEmailToken(token);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) {
