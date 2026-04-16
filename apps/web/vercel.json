@@ -4,6 +4,6 @@
   "buildCommand": "cd ../.. && npx turbo run build --filter=@axiospay/web",
   "outputDirectory": ".next",
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://api.axiospay.example.com"
+    "NEXT_PUBLIC_API_URL": "https://web-production-8a774.up.railway.app"
   }
 }
