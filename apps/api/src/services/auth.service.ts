@@ -19,7 +19,6 @@ const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
 
 const OTP_TTL = 600; // 10 minutes
 const RESET_OTP_TTL = 900; // 15 minutes
-const EMAIL_SEND_TIMEOUT_MS = 8000;
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
@@ -81,33 +80,45 @@ export async function register(
   await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
   await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
 
-  let emailDelivery: 'sent' | 'delayed' = 'sent';
-  try {
-    await withTimeout(
-      sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id),
-      EMAIL_SEND_TIMEOUT_MS,
-      'EMAIL_SEND_TIMEOUT'
-    );
-  } catch (error) {
-    emailDelivery = 'delayed';
-    const smtpError = error as SMTPError;
-    const emailDomain = user.email.split('@')[1];
-    console.error('Registration verification email dispatch delayed', {
-      userId: user.id,
-      emailDomain,
-      requestId: context?.requestId,
-      vercelId: context?.vercelId,
-      errorMessage: smtpError.message,
-      errorCode: smtpError.code,
-      responseCode: smtpError.responseCode,
+  Promise.resolve()
+    .then(async () => {
+      try {
+        await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
+        console.log('Registration verification email sent', {
+          userId: user.id,
+          requestId: context?.requestId,
+          vercelId: context?.vercelId,
+        });
+      } catch (error) {
+        const smtpError = error as SMTPError;
+        const emailDomain = user.email.split('@')[1];
+        console.error('Registration verification email dispatch failed (background)', {
+          userId: user.id,
+          emailDomain,
+          requestId: context?.requestId,
+          vercelId: context?.vercelId,
+          errorMessage: smtpError.message,
+          errorCode: smtpError.code,
+          responseCode: smtpError.responseCode,
+        });
+      }
+    })
+    .catch((error) => {
+      const smtpError = error as SMTPError;
+      console.error('Unhandled registration email background promise rejection', {
+        userId: user.id,
+        requestId: context?.requestId,
+        vercelId: context?.vercelId,
+        errorMessage: smtpError.message,
+        errorCode: smtpError.code,
+      });
     });
-  }
 
   return {
     userId: user.id,
     message: 'Registration successful',
     requiresVerification: true,
-    emailDelivery,
+    emailDelivery: 'sent',
   };
 }
 
@@ -377,25 +388,6 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
 
   return { userId: user.id };
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutErrorCode: string): Promise<T> {
-  let timeoutHandle: NodeJS.Timeout | undefined;
-  const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutHandle = setTimeout(() => {
-      const timeoutError = new Error('Email service timeout') as SMTPError;
-      timeoutError.code = timeoutErrorCode;
-      reject(timeoutError);
-    }, timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
 }
 
 function signAccessToken(userId: string): string {

@@ -34,7 +34,6 @@ const step2Schema = step2BaseSchema
 
 type Step1 = z.infer<typeof step1Schema>;
 type Step2 = z.infer<typeof step2Schema>;
-const REGISTER_TIMEOUT_MS = 12000;
 
 export default function RegisterPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -98,48 +97,28 @@ export default function RegisterPage() {
     setError('');
     setInfo('');
     setEmailDeliveryDelayed(false);
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
-      const controller = new AbortController();
-      timeoutHandle = setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS);
       const result = await api.auth.register({
         ...step1Data,
         phone,
         password: data.password,
-      }, { signal: controller.signal });
+      });
       const userId = result.data?.userId as string | undefined;
-
-      if (result.status === 204) {
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('verify_email', step1Data.email);
-          sessionStorage.removeItem('verify_userId');
-        }
-        router.push('/verify-email');
-        return;
-      }
-
-      if (!userId) {
-        setError('Registration failed. Please try again.');
-        return;
-      }
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('verify_email', step1Data.email);
-        sessionStorage.setItem('verify_userId', userId);
+        if (userId) {
+          sessionStorage.setItem('verify_userId', userId);
+        } else {
+          sessionStorage.removeItem('verify_userId');
+        }
       }
-      const emailDelivery = (result.data?.emailDelivery as 'sent' | 'delayed' | undefined) ?? 'sent';
-      if (emailDelivery === 'delayed') {
-        setEmailDeliveryDelayed(true);
-        setInfo('Verification email delayed — check spam or tap resend below.');
+      const verifyParams = new URLSearchParams({ email: step1Data.email });
+      if (userId) {
+        verifyParams.set('userId', userId);
       }
-      setRegisteredUserId(userId);
-      setIdentityData({
-        idNumber: '',
-        firstName: step1Data.firstName,
-        lastName: step1Data.lastName,
-        dateOfBirth: '',
-      });
-      setStep(3);
+      router.push(`/verify?${verifyParams.toString()}`);
+      return;
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.code === 'ERR_CANCELED') {
         setError('Registration request timed out. Please try again or check spam if verification arrives later.');
@@ -166,9 +145,6 @@ export default function RegisterPage() {
         setError(messages[code] || 'Registration failed. Please check your details and try again.');
       }
     } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
       setLoading(false);
     }
   }
