@@ -11,7 +11,9 @@ export const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 3,
   enableReadyCheck: true,
   retryStrategy: (attempt) => (attempt > 3 ? null : Math.min(attempt * 200, 1_000)),
-  ...(redisUsesTls ? { tls: { rejectUnauthorized: false } } : {}),
+  // Upstash managed cert chains can fail strict verification in some Railway runtimes.
+  // Keep this scoped to TLS (`rediss://`) connections only and configurable by env.
+  ...(redisUsesTls ? { tls: { rejectUnauthorized: env.REDIS_TLS_REJECT_UNAUTHORIZED } } : {}),
 });
 
 type RedisLogLevel = 'info' | 'warn' | 'error';
@@ -84,6 +86,11 @@ export async function checkRedisHealth(): Promise<RedisHealthCheck> {
   }
 }
 
+/**
+ * Wrap Redis-dependent code paths and return a safe fallback value when Redis is unavailable.
+ * Use this for cache/session/OTP auxiliary operations where degraded behavior is acceptable.
+ * `context` may be a string label or a structured object; string labels are logged under `context`.
+ */
 export async function withRedisFallback<T>(
   operation: () => Promise<T>,
   fallback: () => Promise<T> | T,

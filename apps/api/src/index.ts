@@ -14,7 +14,7 @@ async function start(): Promise<void> {
     console.log('✅ Database connected');
 
     // 3. Connect Redis (non-blocking)
-    void (async () => {
+    const redisBootstrapPromise = (async () => {
       try {
         await connectRedis();
         const health = await checkRedisHealth();
@@ -29,6 +29,9 @@ async function start(): Promise<void> {
         console.warn('Redis startup error:', err);
       }
     })();
+    redisBootstrapPromise.catch(() => {
+      // errors are already handled in the bootstrap block above
+    });
 
     // 4. Fetch all rates immediately
     try {
@@ -70,7 +73,7 @@ async function start(): Promise<void> {
     try {
       redis.disconnect();
     } catch {
-      // no-op
+      // Ignore cleanup disconnect errors because Redis may never have connected.
     }
     process.exit(1);
   }

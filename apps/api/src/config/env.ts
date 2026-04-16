@@ -10,6 +10,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(8080),
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1).default('redis://127.0.0.1:6379'),
+  REDIS_TLS_REJECT_UNAUTHORIZED: z.coerce.boolean().default(false),
   JWT_ACCESS_SECRET: z.string().min(32).default(generatedAccessSecret),
   JWT_REFRESH_SECRET: z.string().min(32).default(generatedRefreshSecret),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
@@ -71,6 +72,7 @@ if (!result.success) {
 
 const defaultedKeys = [
   'REDIS_URL',
+  'REDIS_TLS_REJECT_UNAUTHORIZED',
   'JWT_ACCESS_SECRET',
   'JWT_REFRESH_SECRET',
   'BASE_URL',

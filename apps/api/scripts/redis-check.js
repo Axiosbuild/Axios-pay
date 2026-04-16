@@ -2,6 +2,11 @@
 const Redis = require('ioredis');
 
 const redisUrl = (process.env.REDIS_URL || '').trim();
+const CONNECT_TIMEOUT_MS = 10_000;
+const COMMAND_TIMEOUT_MS = 5_000;
+const MAX_RETRIES_PER_REQUEST = 3;
+const retryStrategy = (attempt) => (attempt > 3 ? null : Math.min(attempt * 200, 1_000));
+const rejectUnauthorized = process.env.REDIS_TLS_REJECT_UNAUTHORIZED === 'true';
 
 if (!redisUrl) {
   console.error('[redis-check] REDIS_URL is missing');
@@ -15,11 +20,12 @@ if (!redisUrl.startsWith('rediss://')) {
 const redis = new Redis(redisUrl, {
   lazyConnect: true,
   enableOfflineQueue: false,
-  connectTimeout: 10000,
-  commandTimeout: 5000,
-  maxRetriesPerRequest: 3,
-  retryStrategy: (attempt) => (attempt > 3 ? null : Math.min(attempt * 200, 1000)),
-  ...(redisUrl.startsWith('rediss://') ? { tls: { rejectUnauthorized: false } } : {}),
+  connectTimeout: CONNECT_TIMEOUT_MS,
+  commandTimeout: COMMAND_TIMEOUT_MS,
+  maxRetriesPerRequest: MAX_RETRIES_PER_REQUEST,
+  retryStrategy,
+  // Mirrors runtime behavior used for Upstash on Railway TLS endpoints.
+  ...(redisUrl.startsWith('rediss://') ? { tls: { rejectUnauthorized } } : {}),
 });
 
 redis.on('connect', () => console.info(JSON.stringify({ source: 'redis-check', event: 'connect', status: redis.status })));

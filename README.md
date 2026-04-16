@@ -4,9 +4,10 @@
 
 ### Railway environment variable checklist
 
-- Use `REDIS_URL` from Upstash exactly as provided and keep it encrypted in Railway.
+- Use `REDIS_URL` from Upstash exactly as provided; Railway stores env vars encrypted at rest by default.
 - Ensure there is no leading/trailing whitespace in `REDIS_URL`.
 - Use TLS URL format: `rediss://...` (not `redis://...`).
+- Set `REDIS_TLS_REJECT_UNAUTHORIZED=false` for Upstash on Railway when strict TLS chain verification fails.
 - Prefer `default` user format from Upstash URL (`rediss://default:<password>@...`).
 - After updating env vars in Railway, trigger a redeploy.
 
@@ -25,7 +26,7 @@ npm run build --workspace @axiospay/api
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `Connection is closed` on startup | URL is `redis://` or missing TLS options | Use `rediss://...` and TLS config (`rejectUnauthorized: false`) |
+| `Connection is closed` on startup | URL is `redis://` or missing TLS options | Use `rediss://...` and TLS config (`rejectUnauthorized: false`); note this weakens TLS verification and should be revisited when strict verification is possible |
 | `ETIMEDOUT` | Network/connect timeout too low or transient network issue | Keep `connectTimeout` and `commandTimeout`; retry by redeploying |
 | Commands hang then fail late | Offline queue buffering while disconnected | Set `enableOfflineQueue: false` to fail fast |
 | Too many retries / noisy reconnects | Unlimited request retries | Set `maxRetriesPerRequest: 3` and bounded `retryStrategy` |
