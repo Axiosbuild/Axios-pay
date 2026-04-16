@@ -15,6 +15,7 @@ type SMTPError = Error & {
 const EMAIL_SCHEMA = z.string().trim().email();
 const GMAIL_APP_PASSWORD_FORMAT_REGEX = /^[A-Za-z0-9]{16}$/;
 const MAX_RETRY_ATTEMPTS = 3;
+// Fixed 1s retry delay keeps retry latency bounded so total send time stays within function timeout budgets.
 const RETRY_DELAY_MS = 1000;
 
 const SMTP_HOST = env.SMTP_HOST;
@@ -159,8 +160,6 @@ async function verifyConnectionIfNeeded(): Promise<void> {
     await pooledTransporter.verify();
     hasVerifiedConnection = true;
     console.log('SMTP transporter verification succeeded', {
-      smtpHost: SMTP_HOST,
-      smtpPort: SMTP_PORT,
       pooled: env.SMTP_POOL,
     });
   } catch (error) {

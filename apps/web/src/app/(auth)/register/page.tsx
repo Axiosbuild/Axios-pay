@@ -100,13 +100,13 @@ export default function RegisterPage() {
     setEmailDeliveryDelayed(false);
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
-      const timeoutController = new AbortController();
-      timeoutHandle = setTimeout(() => timeoutController.abort(), REGISTER_TIMEOUT_MS);
+      const controller = new AbortController();
+      timeoutHandle = setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS);
       const result = await api.auth.register({
         ...step1Data,
         phone,
         password: data.password,
-      }, { signal: timeoutController.signal });
+      }, { signal: controller.signal });
       const userId = result.data?.userId as string | undefined;
 
       if (result.status === 204) {
@@ -142,30 +142,29 @@ export default function RegisterPage() {
       setStep(3);
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.code === 'ERR_CANCELED') {
-        setError('Registration timed out. Please try again.');
-        setInfo('Email service busy — check spam or retry in a moment.');
-        return;
+        setError('Registration request timed out. Please try again or check spam if verification arrives later.');
+      } else {
+        const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
+        const code = e?.response?.data?.error || '';
+        if (code === 'VALIDATION_ERROR') {
+          const details = e?.response?.data?.details || [];
+          details.forEach((detail) => {
+            const field = detail.path?.[0];
+            if (!field || !detail.message) return;
+            if (field in step1Schema.shape) {
+              form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
+            } else if (field in step2BaseSchema.shape) {
+              form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
+            }
+          });
+          return;
+        }
+        const messages: Record<string, string> = {
+          EMAIL_EXISTS: 'This email is already registered. Try logging in instead.',
+          PHONE_EXISTS: 'This phone number is already registered.',
+        };
+        setError(messages[code] || 'Registration failed. Please check your details and try again.');
       }
-      const e = err as { response?: { data?: { error?: string; details?: Array<{ path?: string[]; message?: string }> } } };
-      const code = e?.response?.data?.error || '';
-      if (code === 'VALIDATION_ERROR') {
-        const details = e?.response?.data?.details || [];
-        details.forEach((detail) => {
-          const field = detail.path?.[0];
-          if (!field || !detail.message) return;
-          if (field in step1Schema.shape) {
-            form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
-          } else if (field in step2BaseSchema.shape) {
-            form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
-          }
-        });
-        return;
-      }
-      const messages: Record<string, string> = {
-        EMAIL_EXISTS: 'This email is already registered. Try logging in instead.',
-        PHONE_EXISTS: 'This phone number is already registered.',
-      };
-      setError(messages[code] || 'Registration failed. Please check your details and try again.');
     } finally {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
@@ -183,7 +182,7 @@ export default function RegisterPage() {
       setInfo('Verification email sent. Please check your inbox and spam folder.');
       setEmailDeliveryDelayed(false);
     } catch {
-      setError('Email service busy — check spam or retry.');
+      setError('Failed to resend verification email. Please try again in a moment.');
     } finally {
       setResendingEmail(false);
     }

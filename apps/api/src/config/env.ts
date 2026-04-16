@@ -35,9 +35,9 @@ const envSchema = z.object({
   SMTP_POOL: z.coerce.boolean().default(true),
   SMTP_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(20).default(5),
   SMTP_MAX_MESSAGES: z.coerce.number().int().min(1).max(500).default(100),
-  SMTP_TIMEOUT_MS: z.coerce.number().int().min(5000).default(10000),
-  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(1000).default(5000),
-  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10000),
+  SMTP_TIMEOUT_MS: z.coerce.number().int().min(5000).default(10000), // SMTP greeting timeout (server hello)
+  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(1000).default(5000), // TCP connect timeout
+  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10000), // socket inactivity timeout
   TWILIO_ACCOUNT_SID: z.string().min(1).default('placeholder-twilio-sid'),
   TWILIO_AUTH_TOKEN: z.string().min(1).default('placeholder-twilio-token'),
   TWILIO_PHONE_NUMBER: z.string().min(1).default('placeholder-twilio-number'),

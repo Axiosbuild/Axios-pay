@@ -91,9 +91,10 @@ export async function register(
   } catch (error) {
     emailDelivery = 'delayed';
     const smtpError = error as SMTPError;
+    const emailDomain = user.email.split('@')[1];
     console.error('Registration verification email dispatch delayed', {
       userId: user.id,
-      emailDomain: user.email.split('@')[1] || 'unknown',
+      emailDomain,
       requestId: context?.requestId,
       vercelId: context?.vercelId,
       errorMessage: smtpError.message,
@@ -378,12 +379,12 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   return { userId: user.id };
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCode: string): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutErrorCode: string): Promise<T> {
   let timeoutHandle: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutHandle = setTimeout(() => {
       const timeoutError = new Error('Email service timeout') as SMTPError;
-      timeoutError.code = timeoutCode;
+      timeoutError.code = timeoutErrorCode;
       reject(timeoutError);
     }, timeoutMs);
   });
