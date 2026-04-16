@@ -25,6 +25,8 @@ const envSchema = z.object({
   NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE: z.string().min(1).default('placeholder-merchant-code'),
   NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID: z.string().min(1).default('placeholder-pay-item-id'),
   INTERSWITCH_WEBHOOK_SECRET: z.string().min(1).default(generatedWebhookSecret),
+  RESEND_API_KEY: z.string().min(1).default('placeholder-resend-api-key'),
+  EMAIL_FROM: z.string().email().default('onboarding@resend.dev'),
   SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().refine((value) => value === 465 || value === 587, {
     message: 'SMTP_PORT must be 465 (SSL) or 587 (STARTTLS).',
@@ -85,6 +87,8 @@ const defaultedKeys = [
   'NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE',
   'NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID',
   'INTERSWITCH_WEBHOOK_SECRET',
+  'RESEND_API_KEY',
+  'EMAIL_FROM',
   'SMTP_HOST',
   'SMTP_PORT',
   'SMTP_SECURE',

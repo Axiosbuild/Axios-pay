@@ -24,11 +24,6 @@ const REGISTER_IDEMPOTENCY_TTL_SECONDS = 60 * 10;
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
-type SMTPError = Error & {
-  code?: string;
-  responseCode?: number;
-};
-
 export interface RegisterInput {
   email: string;
   phone: string;
@@ -52,8 +47,8 @@ export async function register(
   userId: string;
   message: string;
   requiresVerification: true;
-  emailDelivery: 'queued';
-  emailSent: false;
+  emailDelivery: 'sent';
+  emailSent: true;
 }> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
@@ -65,8 +60,8 @@ export async function register(
           userId: string;
           message: string;
           requiresVerification: true;
-          emailDelivery: 'queued';
-          emailSent: false;
+          emailDelivery: 'sent';
+          emailSent: true;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -130,36 +125,19 @@ export async function register(
     await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
     await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
 
-    void (async () => {
-      try {
-        await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
-        console.log('Registration verification email sent', {
-          userId: user.id,
-          requestId: context?.requestId,
-          vercelId: context?.vercelId,
-        });
-      } catch (error) {
-        const smtpError = error as SMTPError;
-        const emailDomain = user.email.split('@')[1];
-        console.error('Registration verification email dispatch failed (background)', {
-          userId: user.id,
-          emailDomain,
-          requestId: context?.requestId,
-          vercelId: context?.vercelId,
-          errorMessage: smtpError.message,
-          errorCode: smtpError.code,
-          responseCode: smtpError.responseCode,
-        });
-      }
-    })();
+    await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
+    console.log('Registration verification email sent', {
+      userId: user.id,
+      requestId: context?.requestId,
+      vercelId: context?.vercelId,
+    });
 
     const response = {
       userId: user.id,
       message: 'Registration successful',
       requiresVerification: true as const,
-      emailDelivery: 'queued' as const,
-      // Verification email is dispatched asynchronously after this response is returned.
-      emailSent: false as const,
+      emailDelivery: 'sent' as const,
+      emailSent: true as const,
     };
     if (idempotencyCacheKey) {
       await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
@@ -453,22 +431,8 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   await storeOTP(`email:${user.id}`, otp, OTP_TTL);
   await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
 
-  void (async () => {
-    try {
-      await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
-      console.log('Resend OTP verification email sent', { userId: user.id });
-    } catch (error) {
-      const smtpError = error as SMTPError;
-      const emailDomain = user.email.split('@')[1];
-      console.error('Resend OTP verification email dispatch failed (background)', {
-        userId: user.id,
-        emailDomain,
-        errorMessage: smtpError.message,
-        errorCode: smtpError.code,
-        responseCode: smtpError.responseCode,
-      });
-    }
-  })();
+  await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
+  console.log('Resend OTP verification email sent', { userId: user.id });
 
   return { userId: user.id };
 }

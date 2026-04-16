@@ -1,7 +1,5 @@
 import crypto from 'crypto';
-import nodemailer, { type SendMailOptions, type Transporter } from 'nodemailer';
-import type SMTPPool from 'nodemailer/lib/smtp-pool';
-import type SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { Resend } from 'resend';
 import { z } from 'zod';
 import { env } from '../config/env';
 
@@ -13,103 +11,8 @@ type SMTPError = Error & {
 };
 
 const EMAIL_SCHEMA = z.string().trim().email();
-const GMAIL_APP_PASSWORD_FORMAT_REGEX = /^[A-Za-z0-9]{16}$/;
-const MAX_RETRY_ATTEMPTS = 3;
-// Fixed 1s retry delay keeps retry latency bounded so total send time stays within function timeout budgets.
-const RETRY_DELAY_MS = 1000;
-const SEND_MAIL_TIMEOUT_MS = 5000;
-
-const SMTP_HOST = env.SMTP_HOST;
-const SMTP_PORT = env.SMTP_PORT;
-const SMTP_SECURE = SMTP_PORT === 465 ? true : env.SMTP_SECURE;
-const SMTP_REQUIRE_TLS = SMTP_PORT === 587;
-const IS_GMAIL_SMTP = (SMTP_HOST ?? '').toLowerCase() === 'smtp.gmail.com';
-const GMAIL_SERVICE_CONFIG = IS_GMAIL_SMTP ? { service: 'gmail' as const } : {};
-const SHOULD_USE_POOL = env.SMTP_POOL && !IS_GMAIL_SMTP;
-const SMTP_USER = env.SMTP_USER.trim();
-const SMTP_PASS = env.SMTP_PASS.trim();
-const SMTP_REPLY_TO = env.SMTP_REPLY_TO ?? SMTP_USER;
-
-const TRANSIENT_ERROR_CODES = new Set([
-  'ECONNECTION',
-  'ECONNRESET',
-  'EHOSTUNREACH',
-  'EAI_AGAIN',
-  'ETIMEDOUT',
-  'ESOCKET',
-]);
-
-function applyGmailTransportOverrides<T extends SMTPPool.Options | SMTPTransport.Options>(
-  transportOptions: T
-): T {
-  if (!IS_GMAIL_SMTP) {
-    return transportOptions;
-  }
-
-  return {
-    ...transportOptions,
-    port: 465,
-    secure: true,
-    requireTLS: false,
-  };
-}
-
-function createPooledTransporter(): Transporter {
-  const transportOptions: SMTPPool.Options = {
-    ...GMAIL_SERVICE_CONFIG,
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    requireTLS: SMTP_REQUIRE_TLS,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-    pool: true,
-    maxConnections: env.SMTP_MAX_CONNECTIONS,
-    maxMessages: env.SMTP_MAX_MESSAGES,
-    connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
-    greetingTimeout: env.SMTP_TIMEOUT_MS,
-    socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
-    tls: {
-      minVersion: 'TLSv1.2',
-      rejectUnauthorized: true,
-    },
-  };
-
-  return nodemailer.createTransport(applyGmailTransportOverrides(transportOptions));
-}
-
-function createSingleShotTransporter(): Transporter {
-  const transportOptions: SMTPTransport.Options = {
-    ...GMAIL_SERVICE_CONFIG,
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    requireTLS: SMTP_REQUIRE_TLS,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-    connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
-    greetingTimeout: env.SMTP_TIMEOUT_MS,
-    socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
-    tls: {
-      minVersion: 'TLSv1.2',
-      rejectUnauthorized: true,
-    },
-  };
-
-  return nodemailer.createTransport(applyGmailTransportOverrides(transportOptions));
-}
-
-const pooledTransporter = SHOULD_USE_POOL ? createPooledTransporter() : createSingleShotTransporter();
-const singleShotTransporter = createSingleShotTransporter();
-let hasVerifiedConnection = false;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const resend = new Resend(env.RESEND_API_KEY);
+const EMAIL_FROM = env.EMAIL_FROM;
 
 function htmlToText(html: string): string {
   return html
@@ -122,24 +25,6 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-function isTransientError(error: SMTPError): boolean {
-  if (error.code && TRANSIENT_ERROR_CODES.has(error.code)) {
-    return true;
-  }
-
-  if (error.responseCode && [421, 450, 451, 452].includes(error.responseCode)) {
-    return true;
-  }
-
-  const response = `${error.response || ''} ${error.message || ''}`;
-  return /\b4\.7\.0\b|try again later|temporary|temporarily/i.test(response);
-}
-
-function buildMessageId(): string {
-  const domain = SMTP_USER.split('@')[1] || 'localhost';
-  return `<${crypto.randomUUID()}@${domain}>`;
-}
-
 function sanitizeSMTPResponse(response: string | undefined): string | undefined {
   if (!response) {
     return undefined;
@@ -148,143 +33,30 @@ function sanitizeSMTPResponse(response: string | undefined): string | undefined 
   return response.replace(/\s+/g, ' ').slice(0, 200);
 }
 
-function buildSendMailTimeoutError(timeoutMs: number): SMTPError {
-  const error = new Error(`SMTP send timed out after ${timeoutMs}ms`) as SMTPError;
-  error.code = 'ETIMEDOUT';
-  return error;
-}
-
-async function sendMailWithTimeout(
-  transporter: Transporter,
-  mailOptions: SendMailOptions,
-  timeoutMs = SEND_MAIL_TIMEOUT_MS
-): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    await Promise.race([
-      transporter.sendMail(mailOptions),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(buildSendMailTimeoutError(timeoutMs)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
-function assertValidSMTPConfig(): void {
-  if (!IS_GMAIL_SMTP) {
-    return;
-  }
-
-  if (SMTP_PORT !== 465 && SMTP_PORT !== 587) {
-    throw new Error('Gmail SMTP requires SMTP_PORT to be 465 (SSL) or 587 (STARTTLS).');
-  }
-
-  if (SMTP_PORT === 465 && !SMTP_SECURE) {
-    throw new Error('Gmail SMTP on port 465 requires SMTP_SECURE=true.');
-  }
-
-  if (SMTP_PORT === 587 && !SMTP_REQUIRE_TLS) {
-    throw new Error('Gmail SMTP on port 587 requires STARTTLS (requireTLS=true).');
-  }
-
-  if (!GMAIL_APP_PASSWORD_FORMAT_REGEX.test(SMTP_PASS)) {
-    throw new Error(
-      `Invalid Gmail App Password format. Expected 16 alphanumeric characters without spaces. Generate one at https://myaccount.google.com/security. This validation applies only when SMTP_HOST is smtp.gmail.com.`
-    );
-  }
-}
-
-async function verifyConnectionIfNeeded(): Promise<void> {
-  if (hasVerifiedConnection) {
-    return;
-  }
-
-  try {
-    await pooledTransporter.verify();
-    hasVerifiedConnection = true;
-    console.log('SMTP transporter verification succeeded', {
-      pooled: SHOULD_USE_POOL,
-    });
-  } catch (error) {
-    const smtpError = error as SMTPError;
-    console.warn('SMTP verification failed. Email send will continue with runtime fallback.', {
-      errorMessage: smtpError.message,
-      errorCode: smtpError.code,
-      responseCode: smtpError.responseCode,
-      response: sanitizeSMTPResponse(smtpError.response),
-    });
-  }
-}
-
-async function sendWithRetry(mailOptions: SendMailOptions): Promise<void> {
-  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
-    try {
-      await verifyConnectionIfNeeded();
-      await sendMailWithTimeout(pooledTransporter, mailOptions);
-      return;
-    } catch (pooledError) {
-      const primaryError = pooledError as SMTPError;
-
-      if (attempt === 1) {
-        try {
-          await sendMailWithTimeout(singleShotTransporter, mailOptions);
-          return;
-        } catch (fallbackError) {
-          const smtpFallbackError = fallbackError as SMTPError;
-          console.warn('Pooled SMTP send failed; single-shot fallback also failed.', {
-            errorMessage: smtpFallbackError.message,
-            errorCode: smtpFallbackError.code,
-            responseCode: smtpFallbackError.responseCode,
-            response: sanitizeSMTPResponse(smtpFallbackError.response),
-          });
-        }
-      }
-
-      if (attempt === MAX_RETRY_ATTEMPTS || !isTransientError(primaryError)) {
-        // Keep the pooled transporter error because it represents the primary transport path.
-        throw primaryError;
-      }
-
-      await sleep(RETRY_DELAY_MS);
-    }
-  }
-}
-
 async function sendTemplatedEmail(options: {
   to: string;
   subject: string;
   html: string;
   text?: string;
 }): Promise<void> {
-  assertValidSMTPConfig();
-
   const recipient = EMAIL_SCHEMA.parse(options.to);
-  const mailOptions: SendMailOptions = {
-    from: `"Axios Pay" <${SMTP_USER}>`,
-    to: recipient,
-    replyTo: SMTP_REPLY_TO,
-    subject: options.subject,
-    html: options.html,
-    text: options.text ?? htmlToText(options.html),
-    messageId: buildMessageId(),
-    headers: {
-      'X-Message-Reference-ID': crypto.randomUUID(),
-    },
-  };
 
   try {
-    await sendWithRetry(mailOptions);
+    await resend.emails.send({
+      from: EMAIL_FROM,
+      to: recipient,
+      subject: options.subject,
+      html: options.html,
+      text: options.text ?? htmlToText(options.html),
+      headers: {
+        'X-Message-Reference-ID': crypto.randomUUID(),
+      },
+    });
   } catch (error) {
     const smtpError = error as SMTPError;
     console.error('Failed to send email', {
       to: recipient,
       subject: options.subject,
-      smtpHost: SMTP_HOST,
-      smtpPort: SMTP_PORT,
       errorName: smtpError.name,
       errorMessage: smtpError.message,
       errorCode: smtpError.code,
