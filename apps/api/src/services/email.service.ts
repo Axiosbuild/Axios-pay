@@ -17,11 +17,15 @@ const GMAIL_APP_PASSWORD_FORMAT_REGEX = /^[A-Za-z0-9]{16}$/;
 const MAX_RETRY_ATTEMPTS = 3;
 // Fixed 1s retry delay keeps retry latency bounded so total send time stays within function timeout budgets.
 const RETRY_DELAY_MS = 1000;
+const SEND_MAIL_TIMEOUT_MS = 5000;
 
 const SMTP_HOST = env.SMTP_HOST;
 const SMTP_PORT = env.SMTP_PORT;
 const SMTP_SECURE = SMTP_PORT === 465 ? true : env.SMTP_SECURE;
 const SMTP_REQUIRE_TLS = SMTP_PORT === 587;
+const IS_GMAIL_SMTP = (SMTP_HOST ?? '').toLowerCase() === 'smtp.gmail.com';
+const GMAIL_SERVICE_CONFIG = IS_GMAIL_SMTP ? { service: 'gmail' as const } : {};
+const SHOULD_USE_POOL = env.SMTP_POOL && !IS_GMAIL_SMTP;
 const SMTP_USER = env.SMTP_USER.trim();
 const SMTP_PASS = env.SMTP_PASS.trim();
 const SMTP_REPLY_TO = env.SMTP_REPLY_TO ?? SMTP_USER;
@@ -37,6 +41,7 @@ const TRANSIENT_ERROR_CODES = new Set([
 
 function createPooledTransporter(): Transporter {
   const transportOptions: SMTPPool.Options = {
+    ...GMAIL_SERVICE_CONFIG,
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
@@ -62,6 +67,7 @@ function createPooledTransporter(): Transporter {
 
 function createSingleShotTransporter(): Transporter {
   const transportOptions: SMTPTransport.Options = {
+    ...GMAIL_SERVICE_CONFIG,
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
@@ -82,7 +88,7 @@ function createSingleShotTransporter(): Transporter {
   return nodemailer.createTransport(transportOptions);
 }
 
-const pooledTransporter = env.SMTP_POOL ? createPooledTransporter() : createSingleShotTransporter();
+const pooledTransporter = SHOULD_USE_POOL ? createPooledTransporter() : createSingleShotTransporter();
 const singleShotTransporter = createSingleShotTransporter();
 let hasVerifiedConnection = false;
 
@@ -127,8 +133,34 @@ function sanitizeSMTPResponse(response: string | undefined): string | undefined 
   return response.replace(/\s+/g, ' ').slice(0, 200);
 }
 
+function buildSendMailTimeoutError(timeoutMs: number): SMTPError {
+  const error = new Error(`SMTP send timed out after ${timeoutMs}ms`) as SMTPError;
+  error.code = 'ETIMEDOUT';
+  return error;
+}
+
+async function sendMailWithTimeout(
+  transporter: Transporter,
+  mailOptions: SendMailOptions,
+  timeoutMs = SEND_MAIL_TIMEOUT_MS
+): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      transporter.sendMail(mailOptions),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(buildSendMailTimeoutError(timeoutMs)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function assertValidSMTPConfig(): void {
-  if (SMTP_HOST !== 'smtp.gmail.com') {
+  if (!IS_GMAIL_SMTP) {
     return;
   }
 
@@ -160,7 +192,7 @@ async function verifyConnectionIfNeeded(): Promise<void> {
     await pooledTransporter.verify();
     hasVerifiedConnection = true;
     console.log('SMTP transporter verification succeeded', {
-      pooled: env.SMTP_POOL,
+      pooled: SHOULD_USE_POOL,
     });
   } catch (error) {
     const smtpError = error as SMTPError;
@@ -177,14 +209,14 @@ async function sendWithRetry(mailOptions: SendMailOptions): Promise<void> {
   for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
     try {
       await verifyConnectionIfNeeded();
-      await pooledTransporter.sendMail(mailOptions);
+      await sendMailWithTimeout(pooledTransporter, mailOptions);
       return;
     } catch (pooledError) {
       const primaryError = pooledError as SMTPError;
 
       if (attempt === 1) {
         try {
-          await singleShotTransporter.sendMail(mailOptions);
+          await sendMailWithTimeout(singleShotTransporter, mailOptions);
           return;
         } catch (fallbackError) {
           const smtpFallbackError = fallbackError as SMTPError;

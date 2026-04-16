@@ -48,7 +48,13 @@ interface RegisterContext {
 export async function register(
   input: RegisterInput,
   context?: RegisterContext
-): Promise<{ userId: string; message: string; requiresVerification: true; emailDelivery: 'queued' }> {
+): Promise<{
+  userId: string;
+  message: string;
+  requiresVerification: true;
+  emailDelivery: 'queued';
+  emailSent: false;
+}> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
   if (idempotencyCacheKey) {
@@ -60,6 +66,7 @@ export async function register(
           message: string;
           requiresVerification: true;
           emailDelivery: 'queued';
+          emailSent: false;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -151,6 +158,8 @@ export async function register(
       message: 'Registration successful',
       requiresVerification: true as const,
       emailDelivery: 'queued' as const,
+      // Verification email is dispatched asynchronously after this response is returned.
+      emailSent: false as const,
     };
     if (idempotencyCacheKey) {
       await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
