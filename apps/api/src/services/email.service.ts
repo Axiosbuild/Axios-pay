@@ -13,9 +13,11 @@ type SMTPError = Error & {
 };
 
 const EMAIL_SCHEMA = z.string().trim().email();
-const GMAIL_APP_PASSWORD_REGEX = /^[A-Za-z0-9]{16}$/;
+const GMAIL_APP_PASSWORD_FORMAT_REGEX = /^[A-Za-z0-9]{16}$/;
 const MAX_RETRY_ATTEMPTS = 3;
 const INITIAL_BACKOFF_MS = 500;
+const MAX_BACKOFF_JITTER_MS = 200;
+const MAX_BACKOFF_MS = 8000;
 
 const SMTP_HOST = env.SMTP_HOST;
 const SMTP_PORT = env.SMTP_PORT;
@@ -90,19 +92,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 function backoffDelay(attempt: number): number {
-  const jitter = Math.floor(Math.random() * 200);
-  return INITIAL_BACKOFF_MS * 2 ** (attempt - 1) + jitter;
+  const jitter = Math.floor(Math.random() * MAX_BACKOFF_JITTER_MS);
+  return Math.min(MAX_BACKOFF_MS, INITIAL_BACKOFF_MS * 2 ** (attempt - 1) + jitter);
 }
 
 function htmlToText(html: string): string {
   return html
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/\s+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
@@ -119,12 +117,20 @@ function isTransientError(error: SMTPError): boolean {
   }
 
   const response = `${error.response || ''} ${error.message || ''}`;
-  return /\b4\.7\.0\b|try again later|temporar/i.test(response);
+  return /\b4\.7\.0\b|try again later|temporary|temporarily/i.test(response);
 }
 
 function buildMessageId(): string {
   const domain = SMTP_USER.split('@')[1] || 'localhost';
   return `<${crypto.randomUUID()}@${domain}>`;
+}
+
+function sanitizeSMTPResponse(response: string | undefined): string | undefined {
+  if (!response) {
+    return undefined;
+  }
+
+  return response.replace(/\s+/g, ' ').slice(0, 200);
 }
 
 function assertValidSMTPConfig(): void {
@@ -144,8 +150,10 @@ function assertValidSMTPConfig(): void {
     throw new Error('Gmail SMTP on port 587 requires STARTTLS (requireTLS=true).');
   }
 
-  if (!GMAIL_APP_PASSWORD_REGEX.test(SMTP_PASS)) {
-    throw new Error('Invalid Gmail App Password. Use the 16-character App Password without spaces.');
+  if (!GMAIL_APP_PASSWORD_FORMAT_REGEX.test(SMTP_PASS)) {
+    throw new Error(
+      `Invalid Gmail App Password format. Expected 16 alphanumeric characters without spaces. Generate one at https://myaccount.google.com/security. This validation applies only when SMTP_HOST is smtp.gmail.com.`
+    );
   }
 }
 
@@ -163,13 +171,13 @@ async function verifyConnectionIfNeeded(): Promise<void> {
       errorMessage: smtpError.message,
       errorCode: smtpError.code,
       responseCode: smtpError.responseCode,
-      response: smtpError.response,
+      response: sanitizeSMTPResponse(smtpError.response),
     });
   }
 }
 
 async function sendWithRetry(mailOptions: SendMailOptions): Promise<void> {
-  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
     try {
       await verifyConnectionIfNeeded();
       await pooledTransporter.sendMail(mailOptions);
@@ -187,12 +195,13 @@ async function sendWithRetry(mailOptions: SendMailOptions): Promise<void> {
             errorMessage: smtpFallbackError.message,
             errorCode: smtpFallbackError.code,
             responseCode: smtpFallbackError.responseCode,
-            response: smtpFallbackError.response,
+            response: sanitizeSMTPResponse(smtpFallbackError.response),
           });
         }
       }
 
       if (attempt === MAX_RETRY_ATTEMPTS || !isTransientError(primaryError)) {
+        // Keep the pooled transporter error because it represents the primary transport path.
         throw primaryError;
       }
 
@@ -219,7 +228,7 @@ async function sendTemplatedEmail(options: {
     text: options.text ?? htmlToText(options.html),
     messageId: buildMessageId(),
     headers: {
-      'X-Entity-Ref-ID': crypto.randomUUID(),
+      'X-Message-Reference-ID': crypto.randomUUID(),
     },
   };
 
@@ -238,7 +247,7 @@ async function sendTemplatedEmail(options: {
       errorCode: smtpError.code,
       responseCode: smtpError.responseCode,
       command: smtpError.command,
-      response: smtpError.response,
+      response: sanitizeSMTPResponse(smtpError.response),
       stack: smtpError.stack,
     });
     throw error;

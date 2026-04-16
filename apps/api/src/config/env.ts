@@ -26,7 +26,7 @@ const envSchema = z.object({
   INTERSWITCH_WEBHOOK_SECRET: z.string().min(1).default(generatedWebhookSecret),
   SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().refine((value) => value === 465 || value === 587, {
-    message: 'SMTP_PORT must be 465 (SSL) or 587 (STARTTLS) for Gmail SMTP',
+    message: 'SMTP_PORT must be 465 (SSL) or 587 (STARTTLS).',
   }).default(465),
   SMTP_SECURE: z.coerce.boolean().default(true),
   SMTP_USER: z.string().email().default('axiosbuild@gmail.com'),
