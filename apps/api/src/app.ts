@@ -21,6 +21,7 @@ const normalizeRoutePath = (path: string): string => {
 };
 
 const getMountPathFromRegExp = (regexp: RegExp): string => {
+  // Matches Express mount regex strings like /^\/api\/v1\/?(?=\/|$)/i and returns "/api/v1".
   const match = regexp.toString().match(/^\/\^\\\/(.+?)\\\/\?\(\?=\\\/\|\$\)\/i$/);
   if (!match) {
     return '';
@@ -85,7 +86,7 @@ app.use(cors({
       callback(null, true);
       return;
     }
-    callback(new Error(`CORS blocked origin: ${origin}`));
+    callback(new Error('CORS origin not allowed'));
   },
 }));
 app.use(compression());
