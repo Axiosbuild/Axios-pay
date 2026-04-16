@@ -90,6 +90,18 @@ export default function RegisterPage() {
         password: data.password,
       });
       const userId = result.data?.userId as string | undefined;
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('verify_email', step1Data.email);
+      }
+
+      if (result.status === 204) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('verify_userId');
+        }
+        router.push('/verify-email');
+        return;
+      }
+
       if (!userId) {
         setError('Registration failed. Please try again.');
         return;
@@ -97,7 +109,6 @@ export default function RegisterPage() {
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('verify_userId', userId);
-        sessionStorage.setItem('verify_email', step1Data.email);
       }
       setRegisteredUserId(userId);
       setIdentityData({
