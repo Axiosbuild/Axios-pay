@@ -47,8 +47,8 @@ export async function register(
   userId: string;
   message: string;
   requiresVerification: true;
-  emailDelivery: 'sent' | 'deferred';
-  emailSent: boolean;
+  emailDelivery: 'sent';
+  emailSent: true;
 }> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
@@ -60,8 +60,8 @@ export async function register(
           userId: string;
           message: string;
           requiresVerification: true;
-          emailDelivery: 'sent' | 'deferred';
-          emailSent: boolean;
+          emailDelivery: 'sent';
+          emailSent: true;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -148,7 +148,7 @@ export async function register(
       message: 'Registration successful',
       requiresVerification: true as const,
       emailDelivery,
-      emailSent: emailDelivery === 'sent',
+      emailSent: true as const,
     };
     if (idempotencyCacheKey) {
       await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
@@ -546,76 +546,28 @@ async function sendRegistrationVerificationEmail(
   otp: string,
   verificationLink: string,
   context?: RegisterContext
-): Promise<'sent' | 'deferred'> {
-  const sendPromise = sendEmailOTP(email, firstName, otp, verificationLink)
-    .then(() => ({ status: 'sent' as const }))
-    .catch((error: unknown) => ({
-      status: 'failed' as const,
-      reason: error instanceof Error ? error.message : String(error),
-    }));
-
-  let timeoutHandle: NodeJS.Timeout | null = null;
-  const firstResult = await Promise.race([
-    sendPromise,
-    new Promise<{ status: 'timeout' }>((resolve) => {
-      timeoutHandle = setTimeout(() => resolve({ status: 'timeout' }), env.SMTP_SEND_TIMEOUT_MS);
-    }),
-  ]);
-
-  if (timeoutHandle) {
-    clearTimeout(timeoutHandle);
-  }
-
-  if (firstResult.status === 'timeout') {
-    console.warn('Registration verification email send timed out; delivery may complete later', {
-      userId,
-      requestId: context?.requestId,
-      vercelId: context?.vercelId,
-      timeoutMs: env.SMTP_SEND_TIMEOUT_MS,
-    });
-    sendPromise.then((finalResult) => {
-      if (finalResult.status === 'sent') {
-        console.log('Registration verification email eventually sent after timeout', {
-          userId,
-          requestId: context?.requestId,
-          vercelId: context?.vercelId,
-        });
-        return;
-      }
-
-      console.warn('Registration verification email eventually failed after timeout', {
-        userId,
-        requestId: context?.requestId,
-        vercelId: context?.vercelId,
-        reason: finalResult.reason,
-      });
-    }).catch((error: unknown) => {
-      console.warn('Failed to log final status of deferred registration verification email', {
-        userId,
-        requestId: context?.requestId,
-        vercelId: context?.vercelId,
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    });
-    return 'deferred';
-  }
-
-  if (firstResult.status === 'sent') {
+): Promise<'sent'> {
+  try {
+    await sendEmailOTP(email, firstName, otp, verificationLink);
     console.log('Registration verification email sent', {
       userId,
       requestId: context?.requestId,
       vercelId: context?.vercelId,
     });
     return 'sent';
+  } catch (error) {
+    console.warn('Registration verification email failed', {
+      userId,
+      requestId: context?.requestId,
+      vercelId: context?.vercelId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    const sendFailureError = new Error('VERIFICATION_EMAIL_SEND_FAILED');
+    if (error instanceof Error) {
+      (sendFailureError as Error & { cause?: unknown }).cause = error;
+    }
+    throw sendFailureError;
   }
-
-  console.warn('Registration verification email failed', {
-    userId,
-    requestId: context?.requestId,
-    vercelId: context?.vercelId,
-    reason: firstResult.reason,
-  });
-  return 'deferred';
 }
 
 function signAccessToken(userId: string): string {
