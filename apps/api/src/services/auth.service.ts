@@ -67,7 +67,16 @@ export async function register(input: RegisterInput): Promise<{ userId: string; 
   await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
   await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
 
-  await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
+  try {
+    await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
+  } catch (error) {
+    console.error('Registration verification email dispatch failed', {
+      userId: user.id,
+      email: user.email,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    throw error;
+  }
 
   return { userId: user.id, message: 'Registration successful' };
 }
