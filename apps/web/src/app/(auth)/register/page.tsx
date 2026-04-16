@@ -46,6 +46,7 @@ export default function RegisterPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showLoginLinkInError, setShowLoginLinkInError] = useState(false);
   const [info, setInfo] = useState('');
   const [emailDeliveryDelayed, setEmailDeliveryDelayed] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
@@ -94,6 +95,7 @@ export default function RegisterPage() {
     const phone = `${data.countryCode}${localPhone}`;
     setLoading(true);
     setError('');
+    setShowLoginLinkInError(false);
     setInfo('');
     setEmailDeliveryDelayed(false);
     try {
@@ -130,6 +132,19 @@ export default function RegisterPage() {
             form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
           }
         });
+        setShowLoginLinkInError(false);
+        return;
+      }
+      const status = e?.response?.status;
+      const backendMessage = `${e?.response?.data?.message || ''} ${e?.response?.data?.error || ''}`.toLowerCase();
+      if ((status === 400 || status === 409) && backendMessage.includes('email')) {
+        setError('This email is already registered. Try logging in or use a different email.');
+        setShowLoginLinkInError(true);
+        return;
+      }
+      if ((status === 400 || status === 409) && backendMessage.includes('phone')) {
+        setError('This phone number is already registered.');
+        setShowLoginLinkInError(false);
         return;
       }
       const messages: Record<string, string> = {
@@ -137,6 +152,7 @@ export default function RegisterPage() {
         PHONE_EXISTS: 'This phone number is already registered.',
       };
       setError(messages[code] || 'Registration failed. Please check your details and try again.');
+      setShowLoginLinkInError(code === 'EMAIL_EXISTS');
     } finally {
       setLoading(false);
     }
@@ -197,7 +213,15 @@ export default function RegisterPage() {
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">
+          <p>{error}</p>
+          {showLoginLinkInError ? (
+            <p className="mt-1">
+              Already have an account?{' '}
+              <Link href="/login" className="text-brand-amber hover:underline font-medium">Log in</Link>
+            </p>
+          ) : null}
+        </div>
       )}
       {info && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-btn text-sm text-text-primary">{info}</div>
