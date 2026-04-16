@@ -142,7 +142,7 @@ apiClient.interceptors.response.use(
 
 export const api = {
   auth: {
-    register: (data: unknown) => apiClient.post('/auth/register', data),
+    register: (data: unknown, config?: AxiosRequestConfig) => apiClient.post('/auth/register', data, config),
     verifyEmail: (data: unknown) => apiClient.post('/auth/verify-email', data),
     verifyEmailLink: (token: string, userId: string) =>
       apiClient.get('/auth/verify-email-link', { params: { token, userId } }),

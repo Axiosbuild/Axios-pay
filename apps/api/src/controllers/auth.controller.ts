@@ -61,11 +61,18 @@ const verify2FASchema = z.object({
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const data = registerSchema.parse(req.body);
-    const result = await authService.register(data);
+    const requestIdHeader = req.headers['x-request-id'];
+    const vercelIdHeader = req.headers['x-vercel-id'];
+    const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
+    const vercelId = Array.isArray(vercelIdHeader) ? vercelIdHeader[0] : vercelIdHeader;
+
+    const result = await authService.register(data, { requestId, vercelId });
     res.status(201).json({
       success: true,
       message: 'Registration successful',
       userId: result.userId,
+      requiresVerification: result.requiresVerification,
+      emailDelivery: result.emailDelivery,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

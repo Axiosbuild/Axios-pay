@@ -19,8 +19,14 @@ const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
 
 const OTP_TTL = 600; // 10 minutes
 const RESET_OTP_TTL = 900; // 15 minutes
+const EMAIL_SEND_TIMEOUT_MS = 8000;
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
+
+type SMTPError = Error & {
+  code?: string;
+  responseCode?: number;
+};
 
 export interface RegisterInput {
   email: string;
@@ -31,7 +37,15 @@ export interface RegisterInput {
   nationality: string;
 }
 
-export async function register(input: RegisterInput): Promise<{ userId: string; message: string }> {
+interface RegisterContext {
+  requestId?: string;
+  vercelId?: string;
+}
+
+export async function register(
+  input: RegisterInput,
+  context?: RegisterContext
+): Promise<{ userId: string; message: string; requiresVerification: true; emailDelivery: 'sent' | 'delayed' }> {
   const existingEmail = await prisma.user.findUnique({ where: { email: input.email } });
   if (existingEmail) throw new Error('EMAIL_EXISTS');
 
@@ -67,18 +81,33 @@ export async function register(input: RegisterInput): Promise<{ userId: string; 
   await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
   await redis.set(`magic:${user.id}`, magicToken, 'EX', OTP_TTL);
 
+  let emailDelivery: 'sent' | 'delayed' = 'sent';
   try {
-    await sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id);
+    await withTimeout(
+      sendEmailOTP(user.email, user.firstName, emailOTP, magicToken, user.id),
+      EMAIL_SEND_TIMEOUT_MS,
+      'EMAIL_SEND_TIMEOUT'
+    );
   } catch (error) {
-    console.error('Registration verification email dispatch failed', {
+    emailDelivery = 'delayed';
+    const smtpError = error as SMTPError;
+    console.error('Registration verification email dispatch delayed', {
       userId: user.id,
-      email: user.email,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      emailDomain: user.email.split('@')[1] || 'unknown',
+      requestId: context?.requestId,
+      vercelId: context?.vercelId,
+      errorMessage: smtpError.message,
+      errorCode: smtpError.code,
+      responseCode: smtpError.responseCode,
     });
-    throw error;
   }
 
-  return { userId: user.id, message: 'Registration successful' };
+  return {
+    userId: user.id,
+    message: 'Registration successful',
+    requiresVerification: true,
+    emailDelivery,
+  };
 }
 
 export async function verifyEmail(userId: string, otp: string): Promise<{ verified: boolean }> {
@@ -347,6 +376,25 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   await sendEmailOTP(user.email, user.firstName, otp, magicToken, user.id);
 
   return { userId: user.id };
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCode: string): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      const timeoutError = new Error('Email service timeout') as SMTPError;
+      timeoutError.code = timeoutCode;
+      reject(timeoutError);
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function signAccessToken(userId: string): string {
