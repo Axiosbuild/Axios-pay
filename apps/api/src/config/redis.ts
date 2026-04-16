@@ -2,16 +2,20 @@ import Redis from 'ioredis';
 import { env } from './env';
 
 const redisUsesTls = env.REDIS_URL.startsWith('rediss://');
+const MAX_RETRY_ATTEMPTS = 3;
+const retryStrategy = (attempt: number): number | null =>
+  attempt > MAX_RETRY_ATTEMPTS ? null : Math.min(attempt * 200, 1_000);
 
 export const redis = new Redis(env.REDIS_URL, {
   lazyConnect: true,
   enableOfflineQueue: false,
   connectTimeout: 10_000,
   commandTimeout: 5_000,
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: MAX_RETRY_ATTEMPTS,
   enableReadyCheck: true,
-  retryStrategy: (attempt) => (attempt > 3 ? null : Math.min(attempt * 200, 1_000)),
+  retryStrategy,
   // Upstash managed cert chains can fail strict verification in some Railway runtimes.
+  // TODO: Revisit and set REDIS_TLS_REJECT_UNAUTHORIZED=true when strict cert verification is stable.
   // Keep this scoped to TLS (`rediss://`) connections only and configurable by env.
   ...(redisUsesTls ? { tls: { rejectUnauthorized: env.REDIS_TLS_REJECT_UNAUTHORIZED } } : {}),
 });

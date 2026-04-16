@@ -4,8 +4,8 @@ const Redis = require('ioredis');
 const redisUrl = (process.env.REDIS_URL || '').trim();
 const CONNECT_TIMEOUT_MS = 10_000;
 const COMMAND_TIMEOUT_MS = 5_000;
-const MAX_RETRIES_PER_REQUEST = 3;
-const retryStrategy = (attempt) => (attempt > 3 ? null : Math.min(attempt * 200, 1_000));
+const MAX_RETRY_ATTEMPTS = 3;
+const retryStrategy = (attempt) => (attempt > MAX_RETRY_ATTEMPTS ? null : Math.min(attempt * 200, 1_000));
 const rejectUnauthorized = process.env.REDIS_TLS_REJECT_UNAUTHORIZED === 'true';
 
 if (!redisUrl) {
@@ -22,7 +22,7 @@ const redis = new Redis(redisUrl, {
   enableOfflineQueue: false,
   connectTimeout: CONNECT_TIMEOUT_MS,
   commandTimeout: COMMAND_TIMEOUT_MS,
-  maxRetriesPerRequest: MAX_RETRIES_PER_REQUEST,
+  maxRetriesPerRequest: MAX_RETRY_ATTEMPTS,
   retryStrategy,
   // Mirrors runtime behavior used for Upstash on Railway TLS endpoints.
   ...(redisUrl.startsWith('rediss://') ? { tls: { rejectUnauthorized } } : {}),
