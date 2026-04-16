@@ -23,7 +23,8 @@ const frontendOrigin = (() => {
 const allowedOrigins = new Set([
   'https://axioslast-web.vercel.app',
   frontendOrigin,
-].filter(Boolean));
+]);
+const authRoutesPattern = /^\/api\/v1\/auth\/.*/;
 
 const corsOptions: cors.CorsOptions = {
   credentials: true,
@@ -101,7 +102,7 @@ const logRouteTree = (): void => {
 
 app.use(helmet());
 app.use(cors(corsOptions));
-app.options(/^\/api\/v1\/auth\/.*/, cors(corsOptions));
+app.options(authRoutesPattern, cors(corsOptions));
 app.use(compression());
 app.use(morgan('combined'));
 
