@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from '../middleware/auth.middleware';
@@ -39,12 +39,20 @@ const otpApiLimiter = rateLimit({
 router.use(otpApiLimiter);
 router.use(requireAuth);
 
-router.post('/request', otpRequestLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post('/request', otpRequestLimiter, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { customerPhone, transactionReference, amount } = req.body;
 
   if (!customerPhone || !transactionReference || !amount) {
     res.status(400).json({
       error: 'customerPhone, transactionReference, and amount are required.',
+    });
+    return;
+  }
+
+  if (!/^\+[1-9]\d{6,14}$/.test(String(customerPhone).trim())) {
+    res.status(400).json({
+      error: 'INVALID_PHONE_NUMBER',
+      message: 'Phone number must be in international format, e.g. +2348012345678',
     });
     return;
   }
@@ -68,13 +76,13 @@ router.post('/request', otpRequestLimiter, async (req: Request, res: Response): 
       message,
       expiresInSeconds: OTP_TTL_MS / 1000,
     });
-  } catch (err: any) {
-    console.error('[OTP Request Error]', err.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to dispatch OTP.' });
+  } catch (err: unknown) {
+    console.error('[OTP Request Error]', err);
+    next(err);
   }
 });
 
-router.post('/verify', otpVerifyLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post('/verify', otpVerifyLimiter, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { sessionToken, otp, transactionReference } = req.body;
 
   if (!sessionToken || !otp || !transactionReference) {
@@ -149,18 +157,26 @@ router.post('/verify', otpVerifyLimiter, async (req: Request, res: Response): Pr
       transferToken,
       message: 'OTP verified successfully. Proceed with transfer.',
     });
-  } catch (err: any) {
-    console.error('[OTP Verify Error]', err.response?.data || err.message);
-    res.status(500).json({ error: 'OTP verification failed.' });
+  } catch (err: unknown) {
+    console.error('[OTP Verify Error]', err);
+    next(err);
   }
 });
 
-router.post('/resend', otpRequestLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post('/resend', otpRequestLimiter, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const { sessionToken, customerPhone, transactionReference, amount } = req.body;
 
   if (!customerPhone || !transactionReference || !amount) {
     res.status(400).json({
       error: 'customerPhone, transactionReference, and amount are required.',
+    });
+    return;
+  }
+
+  if (!/^\+[1-9]\d{6,14}$/.test(String(customerPhone).trim())) {
+    res.status(400).json({
+      error: 'INVALID_PHONE_NUMBER',
+      message: 'Phone number must be in international format, e.g. +2348012345678',
     });
     return;
   }
@@ -188,9 +204,9 @@ router.post('/resend', otpRequestLimiter, async (req: Request, res: Response): P
       message,
       expiresInSeconds: OTP_TTL_MS / 1000,
     });
-  } catch (err: any) {
-    console.error('[OTP Resend Error]', err.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to resend OTP.' });
+  } catch (err: unknown) {
+    console.error('[OTP Resend Error]', err);
+    next(err);
   }
 });
 

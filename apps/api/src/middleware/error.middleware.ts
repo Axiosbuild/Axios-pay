@@ -22,6 +22,7 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   INVALID_PHONE_NUMBER: { status: 400, message: 'Invalid phone number' },
   UNSUPPORTED_PHONE_COUNTRY: { status: 400, message: 'Phone number country is not supported' },
   INVALID_PARAMETERS: { status: 400, message: 'Missing or invalid required fields' },
+  RATE_LIMIT: { status: 429, message: 'Too many requests. Please try again shortly.' },
   INVALID_ACCOUNT_NUMBER: { status: 400, message: 'Invalid account number' },
   SAME_CURRENCY: { status: 400, message: 'Cannot swap between the same currency' },
   UNSUPPORTED_PAIR: { status: 400, message: 'This currency pair is not supported' },
@@ -47,6 +48,8 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   ID_ALREADY_VERIFIED: { status: 400, message: 'Your identity has already been verified.' },
   ID_VERIFICATION_ATTEMPTS_EXCEEDED: { status: 429, message: 'Too many verification attempts. Please try again tomorrow.' },
   VERIFICATION_SERVICE_UNAVAILABLE: { status: 503, message: 'Identity verification is temporarily unavailable. Please try again later.' },
+  OTP_PROVIDER_AUTH_FAILED: { status: 502, message: 'OTP provider authentication failed. Please contact support.' },
+  OTP_PROVIDER_UNAVAILABLE: { status: 503, message: 'OTP service is temporarily unavailable. Please try again.' },
 };
 
 export function errorMiddleware(
