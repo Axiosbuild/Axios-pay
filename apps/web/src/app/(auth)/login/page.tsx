@@ -77,16 +77,17 @@ function LoginPageContent() {
   }
 
   return (
-    <Card>
-      <h2 className="font-display text-xl font-semibold text-text-primary mb-6">Welcome back</h2>
+    <div className="rounded-lg border border-border bg-white/80 backdrop-blur p-8 shadow-sm">
+      <h2 className="font-display text-2xl font-bold text-text-primary mb-2">Log in to your account</h2>
+      <p className="text-sm text-text-secondary mb-8">Access your wallets and start sending money instantly.</p>
 
       {message && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-btn text-sm text-success">
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-success">
           {message}
         </div>
       )}
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-error">{error}</div>
       )}
 
       {!requires2FA ? (
@@ -104,25 +105,31 @@ function LoginPageContent() {
             error={errors.password?.message}
           />
           <div className="text-right">
-            <Link href="/forgot-password" className="text-sm text-brand-amber hover:underline">Forgot password?</Link>
+            <Link href="/forgot-password" className="text-xs text-brand-amber hover:text-brand-gold transition">
+              Forgot password?
+            </Link>
           </div>
-          <Button type="submit" loading={loading} className="w-full">Log In</Button>
+          <Button type="submit" loading={loading} className="w-full mt-6">
+            Log In
+          </Button>
         </form>
       ) : (
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">Enter the 6-digit code from your authenticator app.</p>
           <OTPInput value={twoFactorCode} onChange={setTwoFactorCode} length={6} />
-          <Button onClick={onVerify2FA} loading={loading} className="w-full" disabled={twoFactorCode.length !== 6}>
+          <Button onClick={onVerify2FA} loading={loading} className="w-full mt-6" disabled={twoFactorCode.length !== 6}>
             Verify & Continue
           </Button>
         </div>
       )}
 
-      <p className="text-center text-sm text-text-muted mt-6">
+      <p className="text-center text-sm text-text-secondary mt-8 pt-6 border-t border-border">
         Don&apos;t have an account?{' '}
-        <Link href="/register" className="text-brand-amber hover:underline font-medium">Sign up</Link>
+        <Link href="/register" className="text-brand-amber hover:text-brand-gold font-semibold transition">
+          Create one now
+        </Link>
       </p>
-    </Card>
+    </div>
   );
 }
 
