@@ -147,14 +147,19 @@ export async function register(
       },
     });
 
-    void sendRegistrationVerificationEmail(
+    sendRegistrationVerificationEmail(
       user.id,
       user.email,
       user.firstName,
       verificationCode,
       verificationLink,
       context
-    );
+    ).catch((error) => {
+      console.warn('Registration verification email task failed unexpectedly', {
+        userId: user.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     const response = {
       userId: user.id,
