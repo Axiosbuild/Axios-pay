@@ -36,6 +36,7 @@ model User {
   idVerifiedAt               DateTime?
   idVerificationFailureReason String?
   isPhoneVerified            Boolean              @default(false)
+  isEmailVerified            Boolean              @default(false)
   termsAccepted              Boolean              @default(false)
   termsAcceptedAt            DateTime?
   cardToken                  String?

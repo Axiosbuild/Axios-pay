@@ -150,6 +150,8 @@ export const api = {
     logout: (data: unknown) => apiClient.post('/auth/logout', data),
     forgotPassword: (data: unknown) => apiClient.post('/auth/forgot-password', data),
     resetPassword: (data: unknown) => apiClient.post('/auth/reset-password', data),
+    verifyEmail: (data: unknown) => apiClient.post('/auth/verify-email', data),
+    resendVerificationEmail: (data: unknown) => apiClient.post('/auth/verify-email/resend', data),
     verify2FA: (data: unknown) => apiClient.post('/auth/2fa/verify', data),
   },
   users: {

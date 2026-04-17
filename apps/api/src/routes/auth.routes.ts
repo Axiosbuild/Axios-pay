@@ -25,6 +25,8 @@ router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
 router.post('/forgot-password', authLimiter, authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
+router.post('/verify-email', authLimiter, authController.verifyEmail);
+router.post('/verify-email/resend', authLimiter, authController.resendVerificationEmail);
 router.post('/2fa/verify', authLimiter, authController.verify2FALogin);
 
 export default router;

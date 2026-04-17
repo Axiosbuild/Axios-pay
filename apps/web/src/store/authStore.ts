@@ -15,6 +15,7 @@ export interface User {
   idVerificationFailureReason?: string | null;
   idVerifiedAt?: string | null;
   isPhoneVerified: boolean;
+  isEmailVerified?: boolean;
   termsAccepted?: boolean;
   termsAcceptedAt?: string | null;
   isPinSet?: boolean;
