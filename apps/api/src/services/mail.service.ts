@@ -19,24 +19,9 @@ export async function sendMail(input: SendMailInput): Promise<void> {
       html: input.html,
       text: input.text,
     });
+    console.log('[SMTP] Sent to:', input.to);
   } catch (error) {
-    const smtpError = error as Partial<{
-      message: string;
-      code: string;
-      command: string;
-      response: string;
-      responseCode: number;
-    }>;
-
-    console.error('SMTP send failed', {
-      to: input.to,
-      subject: input.subject,
-      message: smtpError.message || 'Unknown SMTP send error',
-      code: smtpError.code,
-      command: smtpError.command,
-      response: smtpError.response,
-      responseCode: smtpError.responseCode,
-    });
+    console.error('[SMTP] Failed:', error);
     throw error;
   }
 }
