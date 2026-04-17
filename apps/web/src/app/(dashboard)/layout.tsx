@@ -74,12 +74,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Sidebar */}
       <aside className="hidden md:flex w-20 lg:w-60 bg-navy flex-col fixed h-full z-20">
         <div className="p-6 border-b border-white/10">
-          <p className="font-display font-bold text-white text-lg hidden lg:block">Axios Pay</p>
-          <p className="text-xs text-white/40 hidden lg:block">Cross-Border FX, Unlocked.</p>
+          <Link href="/" className="hidden lg:block">
+            <p className="font-display font-bold text-white text-lg hover:text-white/90 transition-colors">Axios Pay</p>
+            <p className="text-xs text-white/40">Cross-Border FX, Unlocked.</p>
+          </Link>
           <p className="font-display font-bold text-white text-center text-lg lg:hidden">AP</p>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
           {NAV_ITEMS.map(({ href, icon: Icon, label }, index) => {
             const active = pathname === href;
             return (
@@ -123,9 +125,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Menu className="w-6 h-6" />
             </button>
           </div>
-          <p className="font-display text-lg text-text-primary absolute left-1/2 -translate-x-1/2 md:static md:left-auto md:translate-x-0">
+          <Link href="/" className="font-display text-lg text-text-primary absolute left-1/2 -translate-x-1/2 md:static md:left-auto md:translate-x-0 hover:text-text-secondary transition-colors">
             Axios Pay
-          </p>
+          </Link>
           <div className="flex items-center justify-end gap-2">
             <Link href="/notifications" className="min-h-11 min-w-11 flex items-center justify-center rounded-full text-text-primary transition-all duration-200 hover:bg-subtle">
               <Bell className="w-5 h-5" />
@@ -140,14 +142,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Mobile drawer */}
       <div className={`md:hidden fixed inset-0 z-40 transition-all duration-200 ${drawerOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}>
         <div className={`absolute inset-0 bg-black/40 transition-all duration-200 ${drawerOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setDrawerOpen(false)} />
-        <div className={`absolute inset-0 bg-page p-4 pt-6 transition-all duration-200 ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`absolute inset-0 bg-page p-4 pt-6 transition-all duration-200 flex flex-col ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="flex items-center justify-between mb-6">
             <p className="font-display text-xl text-text-primary">Menu</p>
             <button type="button" onClick={() => setDrawerOpen(false)} className="min-h-11 min-w-11 flex items-center justify-center text-text-primary">
               <X className="w-6 h-6" />
             </button>
           </div>
-          <nav className="space-y-2">
+          <nav className="space-y-2 flex-1 overflow-y-auto pb-4">
             {NAV_ITEMS.map(({ href, icon: Icon, label }, index) => {
               const active = pathname === href;
               return (
@@ -185,12 +187,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main content */}
         <main className="flex-1 md:ml-20 lg:ml-60 p-4 md:p-6 pt-20 md:pt-6 pb-24 md:pb-6">
-          <KYCBanner verified={user?.idVerificationStatus === 'VERIFIED'} />
-          {children}
-          <p className="text-center text-xs text-text-muted mt-8">
-            Complaints or support: <a href="mailto:axiosbuild@gmail.com" className="text-brand-amber hover:underline">axiosbuild@gmail.com</a>
-          </p>
-          <PINSetupModal open={!user?.isPinSet} />
+          <div className="relative mx-auto w-full max-w-7xl">
+            <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 rounded-card bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.16),_transparent_42%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_38%)]" />
+            <KYCBanner verified={user?.idVerificationStatus === 'VERIFIED'} />
+            {children}
+            <p className="text-center text-xs text-text-muted mt-8">
+              Complaints or support: <a href="mailto:axiosbuild@gmail.com" className="text-brand-amber hover:underline">axiosbuild@gmail.com</a>
+            </p>
+            <PINSetupModal open={!user?.isPinSet} />
+          </div>
         </main>
       </div>
   );

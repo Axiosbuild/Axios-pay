@@ -5,20 +5,20 @@
 @tailwind utilities;
 
 :root {
-  --brand-amber: #C8772A;
-  --brand-gold: #E8A54B;
-  --brand-bg: #FDF3E3;
-  --navy: #1A2332;
-  --navy-medium: #2C3A50;
-  --page-bg: #F9F7F4;
+  --brand-amber: #059669;
+  --brand-gold: #10B981;
+  --brand-bg: #ECFDF5;
+  --navy: #0F172A;
+  --navy-medium: #1E293B;
+  --page-bg: #F8FAFC;
   --surface: #FFFFFF;
-  --subtle: #F2EFE9;
-  --border: #E5E1DA;
-  --success: #1A7A4A;
-  --error: #C0392B;
-  --text-primary: #1A2332;
-  --text-secondary: #5A6474;
-  --text-muted: #9AA3AE;
+  --subtle: #F1F5F9;
+  --border: #E2E8F0;
+  --success: #059669;
+  --error: #DC2626;
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
 }
 
 body {
