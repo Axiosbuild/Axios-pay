@@ -18,6 +18,16 @@ const envSchema = z.object({
   BASE_URL: z.string().url().default('https://api-gateway.interswitchng.com'),
   INTERSWITCH_BASE_URL: z.string().url().optional(),
   INTERSWITCH_PASSPORT_URL: z.string().url().default('https://example.invalid'),
+  INTERSWITCH_NAME_ENQUIRY_BASE_URL: z
+    .string()
+    .url()
+    .default('https://sandbox.interswitchng.com/api/v2/nameenquiry'),
+  INTERSWITCH_FUNDS_TRANSFER_URL: z
+    .string()
+    .url()
+    .default('https://sandbox.interswitchng.com/api/v1/purchases/transfers'),
+  INTERSWITCH_TERMINAL_ID: z.string().min(1).default('3PBP0001'),
+  INTERSWITCH_TRANSFER_SECRET_KEY: z.string().min(1).default('placeholder-transfer-secret'),
   INTERSWITCH_CLIENT_ID: z.string().min(1).default('placeholder-client-id'),
   INTERSWITCH_CLIENT_SECRET: z.string().min(1).default('placeholder-client-secret'),
   INTERSWITCH_MERCHANT_CODE: z.string().min(1).default('placeholder-merchant-code'),
@@ -71,6 +81,10 @@ const defaultedKeys = [
   'BASE_URL',
   'INTERSWITCH_BASE_URL',
   'INTERSWITCH_PASSPORT_URL',
+  'INTERSWITCH_NAME_ENQUIRY_BASE_URL',
+  'INTERSWITCH_FUNDS_TRANSFER_URL',
+  'INTERSWITCH_TERMINAL_ID',
+  'INTERSWITCH_TRANSFER_SECRET_KEY',
   'INTERSWITCH_CLIENT_ID',
   'INTERSWITCH_CLIENT_SECRET',
   'INTERSWITCH_MERCHANT_CODE',

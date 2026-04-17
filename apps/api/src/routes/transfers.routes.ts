@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth.middleware';
 import * as walletController from '../controllers/wallet.controller';
+import * as transferController from '../controllers/transfers.controller';
 
 const router = Router();
 
@@ -13,6 +14,9 @@ const apiLimiter = rateLimit({
 
 router.use(apiLimiter);
 router.use(requireAuth);
+
+router.post('/resolve-account', transferController.resolveAccountName);
+router.post('/initiate', transferController.initiateTransfer);
 
 router.get('/banks', walletController.listBanks);
 router.post('/resolve', walletController.resolveBankAccount);

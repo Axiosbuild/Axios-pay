@@ -8,6 +8,7 @@ import { errorMiddleware } from './middleware/error.middleware';
 import apiRoutes from './routes/index';
 import walletFundingRoutes from './routes/wallet-funding.routes';
 import fundingRoutes from './routes/funding';
+import transfersRoutes from './routes/transfers.routes';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -128,6 +129,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.use('/api/v1', apiRoutes);
 app.use('/api', walletFundingRoutes);
 app.use('/api/funding', fundingRoutes);
+app.use('/api/transfers', transfersRoutes);
 logRouteTree();
 
 app.use((_req: Request, res: Response) => {
