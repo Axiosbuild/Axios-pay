@@ -139,7 +139,12 @@ export default function DepositPage() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
     }
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+    throw new Error('Browser does not support secure random generation. Please use a modern browser.');
   }
 
   async function requestPaymentOtp(amountToPay: number): Promise<boolean> {
@@ -256,6 +261,10 @@ export default function DepositPage() {
     setInlineMessage('');
     try {
       if (!otpVerified || !transferToken || !otpTxRef || otpAmount !== data.amount) {
+        if (otpAmount !== null && otpAmount !== data.amount) {
+          setOtpVerified(false);
+          setTransferToken('');
+        }
         await requestPaymentOtp(data.amount);
         return;
       }
@@ -304,6 +313,10 @@ export default function DepositPage() {
     setError('');
     try {
       if (!otpVerified || !transferToken || !otpTxRef || otpAmount !== data.amount) {
+        if (otpAmount !== null && otpAmount !== data.amount) {
+          setOtpVerified(false);
+          setTransferToken('');
+        }
         await requestPaymentOtp(data.amount);
         return;
       }

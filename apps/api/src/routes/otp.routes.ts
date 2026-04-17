@@ -30,6 +30,13 @@ const otpVerifyLimiter = rateLimit({
   message: { error: 'Too many verification attempts. Please wait 10 minutes.' },
 });
 
+const otpApiLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  message: { error: 'Too many OTP API requests. Please wait 10 minutes.' },
+});
+
+router.use(otpApiLimiter);
 router.use(requireAuth);
 
 router.post('/request', otpRequestLimiter, async (req: Request, res: Response): Promise<void> => {
@@ -129,7 +136,7 @@ router.post('/verify', otpVerifyLimiter, async (req: Request, res: Response): Pr
 
     const transferToken = uuidv4();
     saveVerifiedTransferSession(transferToken, {
-      otp: transferToken,
+      otp: '',
       expiresAt: Date.now() + OTP_TTL_MS,
       customerPhone: session.customerPhone,
       transactionReference: session.transactionReference,
