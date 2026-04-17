@@ -31,7 +31,7 @@ const envSchema = z.object({
   SMTP_HOST: z.string().min(1).default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().default(465),
   SMTP_SECURE: z.coerce.boolean().default(true),
-  SMTP_USER: z.string().email().default('info@axiospay.space'),
+  SMTP_USER: z.string().min(1).default('info@axiospay.space'),
   EMAIL_FROM: z.string().email().optional(),
   SMTP_FROM: z.string().email().optional(),
   SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
