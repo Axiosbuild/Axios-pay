@@ -27,6 +27,14 @@ const COUNTRY_TO_CURRENCY: Record<FundingCountry, FundingCurrency> = {
   SA: 'ZAR',
 };
 
+const CURRENCY_TO_COUNTRY: Record<FundingCurrency, FundingCountry> = {
+  NGN: 'NG',
+  KES: 'KE',
+  UGX: 'UG',
+  GHS: 'GH',
+  ZAR: 'SA',
+};
+
 const CURRENCY_CODE_TO_NUMERIC: Record<FundingCurrency, string> = {
   NGN: '566',
   KES: '404',
@@ -52,8 +60,8 @@ function normalizeCurrency(currency?: string): FundingCurrency {
 }
 
 function normalizeCountry(country?: string): FundingCountry {
-  const normalizedRaw = (country || '').toUpperCase();
-  const normalized = COUNTRY_ALIASES[normalizedRaw] ?? normalizedRaw;
+  const uppercased = (country || '').toUpperCase();
+  const normalized = COUNTRY_ALIASES[uppercased] ?? uppercased;
   if (!['NG', 'KE', 'UG', 'GH', 'SA'].includes(normalized)) {
     throw new Error('UNSUPPORTED_COUNTRY');
   }
@@ -85,16 +93,12 @@ function resolveFundingCountryAndCurrency(params: {
 
   if (hasCurrency) {
     const currency = normalizeCurrency(params.currency);
-    const countryCode = Object.entries(COUNTRY_TO_CURRENCY).find(([, mappedCurrency]) => mappedCurrency === currency)?.[0];
-    if (!countryCode) throw new Error('UNSUPPORTED_CURRENCY');
-    return { countryCode: countryCode as FundingCountry, currency };
+    return { countryCode: CURRENCY_TO_COUNTRY[currency], currency };
   }
 
   if (params.fallbackCurrency?.trim()) {
     const currency = normalizeCurrency(params.fallbackCurrency);
-    const countryCode = Object.entries(COUNTRY_TO_CURRENCY).find(([, mappedCurrency]) => mappedCurrency === currency)?.[0];
-    if (!countryCode) throw new Error('UNSUPPORTED_CURRENCY');
-    return { countryCode: countryCode as FundingCountry, currency };
+    return { countryCode: CURRENCY_TO_COUNTRY[currency], currency };
   }
 
   if (params.fallbackCountry?.trim()) {

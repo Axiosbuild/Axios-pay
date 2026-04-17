@@ -47,9 +47,17 @@ const CURRENCY_DECIMAL_PLACES: Record<(typeof SUPPORTED_TRANSFER_CURRENCIES)[num
   ZAR: 2,
 };
 
+const ACCOUNT_NUMBER_RULES: Record<(typeof SUPPORTED_TRANSFER_COUNTRIES)[number], { min: number; max: number }> = {
+  NG: { min: 10, max: 10 },
+  UG: { min: 8, max: 17 },
+  KE: { min: 10, max: 14 },
+  GH: { min: 10, max: 13 },
+  SA: { min: 6, max: 16 },
+};
+
 function normalizeCountryCode(countryCode?: string): (typeof SUPPORTED_TRANSFER_COUNTRIES)[number] {
-  const normalizedRaw = (countryCode || '').trim().toUpperCase();
-  const normalized = COUNTRY_ALIASES[normalizedRaw] ?? normalizedRaw;
+  const uppercased = (countryCode || '').trim().toUpperCase();
+  const normalized = COUNTRY_ALIASES[uppercased] ?? uppercased;
   if (!SUPPORTED_TRANSFER_COUNTRIES.includes(normalized as (typeof SUPPORTED_TRANSFER_COUNTRIES)[number])) {
     throw new Error('UNSUPPORTED_COUNTRY');
   }
@@ -64,9 +72,13 @@ function normalizeTransferCurrency(currency?: string): (typeof SUPPORTED_TRANSFE
   return normalized as (typeof SUPPORTED_TRANSFER_CURRENCIES)[number];
 }
 
-function normalizeAccountNumber(accountNumber: string): string {
+function normalizeAccountNumber(
+  accountNumber: string,
+  countryCode?: (typeof SUPPORTED_TRANSFER_COUNTRIES)[number]
+): string {
   const normalized = accountNumber.replace(/\D/g, '');
-  if (normalized.length < 6 || normalized.length > 18) {
+  const rule = countryCode ? ACCOUNT_NUMBER_RULES[countryCode] : { min: 6, max: 18 };
+  if (normalized.length < rule.min || normalized.length > rule.max) {
     throw new Error('INVALID_ACCOUNT_NUMBER');
   }
   return normalized;
@@ -114,10 +126,16 @@ function resolveCountryAndCurrency(params: {
 }
 
 function maskEmail(email: string): string {
-  const [local, domain] = email.split('@');
-  if (!local || !domain) return '***';
-  if (local.length <= 2) return `***@${domain}`;
-  return `${local.slice(0, 2)}***@${domain}`;
+  const atIndex = email.indexOf('@');
+  if (atIndex <= 0 || atIndex >= email.length - 1) return '***';
+  const local = email.slice(0, atIndex);
+  const domain = email.slice(atIndex + 1);
+  if (!domain.includes('.')) return '***';
+  const [domainHead, ...domainTail] = domain.split('.');
+  const safeHead = domainHead.length <= 2 ? '***' : `${domainHead.slice(0, 2)}***`;
+  const safeDomain = [safeHead, ...domainTail].join('.');
+  if (local.length <= 2) return `***@${safeDomain}`;
+  return `${local.slice(0, 2)}***@${safeDomain}`;
 }
 
 async function assertTransferCompliance(userId: string): Promise<{
@@ -666,11 +684,11 @@ export async function resolveBankAccount(
   accountNumber: string,
   params?: { countryCode?: string; currency?: string }
 ) {
-  const normalizedAccountNumber = normalizeAccountNumber(accountNumber);
   const resolved = resolveCountryAndCurrency({
     countryCode: params?.countryCode,
     currency: params?.currency,
   });
+  const normalizedAccountNumber = normalizeAccountNumber(accountNumber, resolved.countryCode);
 
   if (process.env.NODE_ENV !== 'production') {
     return { accountName: `${resolved.countryCode} Mock User ${normalizedAccountNumber.slice(-4)}` };
@@ -705,7 +723,7 @@ export async function withdrawToBank(
     fallbackCountry: user.country,
     fallbackCurrency: user.currency,
   });
-  const normalizedAccountNumber = normalizeAccountNumber(params.accountNumber);
+  const normalizedAccountNumber = normalizeAccountNumber(params.accountNumber, resolved.countryCode);
 
   const wallet = await getWalletByCurrency(userId, resolved.currency);
   if (!wallet || new Decimal(wallet.balance.toString()).lt(amount)) {
@@ -827,10 +845,6 @@ export async function transferToAxiosUser(
   const currency = senderCurrency
     ? normalizeTransferCurrency(senderCurrency)
     : normalizeTransferCurrency(sender.currency);
-  const senderWallet = await getWalletByCurrency(userId, currency);
-  if (!senderWallet || new Decimal(senderWallet.balance.toString()).lt(amount)) {
-    throw new Error('INSUFFICIENT_BALANCE');
-  }
   const recipient = await prisma.user.findUnique({
     where: { email: normalizedRecipientEmail },
     select: { id: true, email: true, currency: true, termsAccepted: true, kycStatus: true, isFrozen: true },
@@ -841,7 +855,11 @@ export async function transferToAxiosUser(
   if (!['SUBMITTED', 'APPROVED'].includes(recipient.kycStatus)) {
     throw new Error('KYC_REQUIRED');
   }
-  if (recipient.id === userId) throw new Error('INVALID_PARAMETERS');
+  if (recipient.id === userId) throw new Error('SELF_TRANSFER_NOT_ALLOWED');
+  const senderWallet = await getWalletByCurrency(userId, currency);
+  if (!senderWallet || new Decimal(senderWallet.balance.toString()).lt(amount)) {
+    throw new Error('INSUFFICIENT_BALANCE');
+  }
 
   const recipientCurrency = normalizeTransferCurrency(recipient.currency);
   const exchangeRate =

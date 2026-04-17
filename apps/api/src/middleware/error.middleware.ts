@@ -52,6 +52,7 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   ID_VERIFICATION_ATTEMPTS_EXCEEDED: { status: 429, message: 'Too many verification attempts. Please try again tomorrow.' },
   VERIFICATION_SERVICE_UNAVAILABLE: { status: 503, message: 'Identity verification is temporarily unavailable. Please try again later.' },
   KYC_REQUIRED: { status: 403, message: 'Complete KYC to use this transfer feature.' },
+  SELF_TRANSFER_NOT_ALLOWED: { status: 400, message: 'You cannot transfer to your own account.' },
   OTP_PROVIDER_AUTH_FAILED: { status: 502, message: 'OTP provider authentication failed. Please contact support.' },
   OTP_PROVIDER_UNAVAILABLE: { status: 503, message: 'OTP service is temporarily unavailable. Please try again.' },
 };

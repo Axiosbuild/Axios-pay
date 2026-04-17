@@ -36,7 +36,7 @@ const paymentLinkSchema = z.object({
 const resolveAccountSchema = z.object({
   bankCode: z.string().min(1),
   accountNumber: z.string().regex(/^\d{6,18}$/),
-  countryCode: z.string().trim().toUpperCase().length(2).optional(),
+  countryCode: z.string().trim().regex(/^[a-zA-Z]{2}$/).transform((value) => value.toUpperCase()).optional(),
   currency: z.enum(['NGN', 'UGX', 'KES', 'GHS', 'ZAR']).optional(),
 });
 
@@ -46,7 +46,7 @@ const sendMoneySchema = z.object({
   accountName: z.string().min(1),
   amount: z.number().positive().min(1000),
   narration: z.string().max(200).optional(),
-  countryCode: z.string().trim().toUpperCase().length(2).optional(),
+  countryCode: z.string().trim().regex(/^[a-zA-Z]{2}$/).transform((value) => value.toUpperCase()).optional(),
   currency: z.enum(['NGN', 'UGX', 'KES', 'GHS', 'ZAR']).optional(),
 });
 

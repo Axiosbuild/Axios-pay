@@ -20,6 +20,14 @@ interface Wallet {
   balance: string;
 }
 
+const ACCOUNT_NUMBER_MIN_BY_COUNTRY: Record<string, number> = {
+  NG: 10,
+  UG: 8,
+  KE: 10,
+  GH: 10,
+  SA: 6,
+};
+
 export default function WithdrawPage() {
   const { user } = useAuthStore();
   const [bankCode, setBankCode] = useState('');
@@ -58,18 +66,20 @@ export default function WithdrawPage() {
   const selectedCountry = useMemo(() => {
     return PILOT_COUNTRIES.find((country) => country.currency === currency) ?? PILOT_COUNTRIES[0];
   }, [currency]);
+  const minAccountLength = ACCOUNT_NUMBER_MIN_BY_COUNTRY[selectedCountry.code] ?? 10;
 
   useEffect(() => {
     if (!walletCurrencies.length) return;
     if (walletCurrencies.includes(currency)) return;
 
-    if (user?.currency && walletCurrencies.includes(user.currency)) {
-      setCurrency(user.currency);
+    const preferredCurrency = PILOT_COUNTRIES.find((country) => country.code === user?.nationality)?.currency;
+    if (preferredCurrency && walletCurrencies.includes(preferredCurrency)) {
+      setCurrency(preferredCurrency);
       return;
     }
 
     setCurrency(walletCurrencies[0]);
-  }, [walletCurrencies, currency, user?.currency]);
+  }, [walletCurrencies, currency, user?.nationality]);
 
   const selectedBalance = useMemo(() => {
     const wallet = (wallets || []).find((w) => w.currency === currency);
@@ -77,7 +87,8 @@ export default function WithdrawPage() {
   }, [wallets, currency]);
 
   useEffect(() => {
-    if (accountNumber.length < 6 || !bankCode || mode !== 'bank') return;
+    setAccountName('');
+    if (accountNumber.length < minAccountLength || !bankCode || mode !== 'bank') return;
     api.wallets
       .resolveBankAccount({
         bankCode,
@@ -87,7 +98,7 @@ export default function WithdrawPage() {
       })
       .then((r) => setAccountName(r.data?.accountName || ''))
       .catch(() => setAccountName(''));
-  }, [accountNumber, bankCode, currency, selectedCountry.code, mode]);
+  }, [accountNumber, bankCode, currency, selectedCountry.code, mode, minAccountLength]);
 
   useEffect(() => {
     if (!pinToken || !pending) return;
@@ -195,7 +206,7 @@ export default function WithdrawPage() {
                   value={accountNumber}
                   onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 18))}
                   className="w-full px-3 py-2.5 rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
-                  placeholder="Enter account number"
+                  placeholder={`Enter account number (${minAccountLength} - 18 digits)`}
                 />
               </div>
             <div className="space-y-1">
@@ -243,7 +254,7 @@ export default function WithdrawPage() {
           loading={loading}
             disabled={
               mode === 'bank'
-              ? (!bankCode || accountNumber.length < 6 || !accountName || Number(amount) < 1000)
+              ? (!bankCode || accountNumber.length < minAccountLength || !accountName || Number(amount) < 1000)
               : (!recipientEmail || Number(amount) < 100)
             }
           className="w-full"
