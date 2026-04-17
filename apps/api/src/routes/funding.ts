@@ -13,6 +13,27 @@ const PAYMENT_BASE =
     : 'https://sandbox.interswitchng.com';
 
 type FundingCurrency = 'NGN' | 'KES' | 'UGX' | 'GHS' | 'ZAR';
+type FundingCountry = 'NG' | 'KE' | 'UG' | 'GH' | 'SA';
+
+const COUNTRY_ALIASES: Record<string, FundingCountry> = {
+  ZA: 'SA',
+};
+
+const COUNTRY_TO_CURRENCY: Record<FundingCountry, FundingCurrency> = {
+  NG: 'NGN',
+  KE: 'KES',
+  UG: 'UGX',
+  GH: 'GHS',
+  SA: 'ZAR',
+};
+
+const CURRENCY_TO_COUNTRY: Record<FundingCurrency, FundingCountry> = {
+  NGN: 'NG',
+  KES: 'KE',
+  UGX: 'UG',
+  GHS: 'GH',
+  ZAR: 'SA',
+};
 
 const CURRENCY_CODE_TO_NUMERIC: Record<FundingCurrency, string> = {
   NGN: '566',
@@ -38,34 +59,116 @@ function normalizeCurrency(currency?: string): FundingCurrency {
   return normalized as FundingCurrency;
 }
 
+function normalizeCountry(country?: string): FundingCountry {
+  const uppercased = (country || '').toUpperCase();
+  const normalized = COUNTRY_ALIASES[uppercased] ?? uppercased;
+  if (!['NG', 'KE', 'UG', 'GH', 'SA'].includes(normalized)) {
+    throw new Error('UNSUPPORTED_COUNTRY');
+  }
+  return normalized as FundingCountry;
+}
+
+function resolveFundingCountryAndCurrency(params: {
+  countryCode?: string;
+  currency?: string;
+  fallbackCountry?: string | null;
+  fallbackCurrency?: string | null;
+}): { countryCode: FundingCountry; currency: FundingCurrency } {
+  const hasCountry = Boolean(params.countryCode?.trim());
+  const hasCurrency = Boolean(params.currency?.trim());
+
+  if (hasCountry && hasCurrency) {
+    const countryCode = normalizeCountry(params.countryCode);
+    const currency = normalizeCurrency(params.currency);
+    if (COUNTRY_TO_CURRENCY[countryCode] !== currency) {
+      throw new Error('COUNTRY_CURRENCY_MISMATCH');
+    }
+    return { countryCode, currency };
+  }
+
+  if (hasCountry) {
+    const countryCode = normalizeCountry(params.countryCode);
+    return { countryCode, currency: COUNTRY_TO_CURRENCY[countryCode] };
+  }
+
+  if (hasCurrency) {
+    const currency = normalizeCurrency(params.currency);
+    return { countryCode: CURRENCY_TO_COUNTRY[currency], currency };
+  }
+
+  if (params.fallbackCurrency?.trim()) {
+    const currency = normalizeCurrency(params.fallbackCurrency);
+    return { countryCode: CURRENCY_TO_COUNTRY[currency], currency };
+  }
+
+  if (params.fallbackCountry?.trim()) {
+    const countryCode = normalizeCountry(params.fallbackCountry);
+    return { countryCode, currency: COUNTRY_TO_CURRENCY[countryCode] };
+  }
+
+  return { countryCode: 'NG', currency: 'NGN' };
+}
+
 router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
   const { userId, amount } = req.body as { userId?: string; amount?: number };
-  let currency: FundingCurrency;
-
-  try {
-    currency = normalizeCurrency((req.body as { currency?: string }).currency);
-  } catch {
-    res.status(400).json({ error: 'Unsupported currency.' });
-    return;
-  }
 
   if (!userId || !amount || amount <= 0) {
     res.status(400).json({ error: 'userId and a positive amount are required.' });
     return;
   }
 
-  if (amount < MIN_AMOUNTS[currency]) {
-    res.status(400).json({
-      error: `Minimum funding amount for ${currency} is ${MIN_AMOUNTS[currency]}.`,
-    });
-    return;
-  }
-
   try {
     const reference = `FUND-${uuidv4().slice(0, 8).toUpperCase()}-${Date.now()}`;
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        country: true,
+        currency: true,
+        termsAccepted: true,
+        kycStatus: true,
+        isFrozen: true,
+      },
+    });
     if (!user) {
       res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    if (user.isFrozen) {
+      res.status(403).json({ error: 'Account is frozen.' });
+      return;
+    }
+
+    if (!user.termsAccepted) {
+      res.status(403).json({ error: 'Terms must be accepted before funding.' });
+      return;
+    }
+
+    if (!['SUBMITTED', 'APPROVED'].includes(user.kycStatus)) {
+      res.status(403).json({ error: 'KYC is required before funding.' });
+      return;
+    }
+
+    let resolved: { countryCode: FundingCountry; currency: FundingCurrency };
+    try {
+      resolved = resolveFundingCountryAndCurrency({
+        countryCode: (req.body as { countryCode?: string }).countryCode,
+        currency: (req.body as { currency?: string }).currency,
+        fallbackCountry: user.country,
+        fallbackCurrency: user.currency,
+      });
+    } catch {
+      res.status(400).json({ error: 'Unsupported country/currency combination.' });
+      return;
+    }
+
+    const { countryCode, currency } = resolved;
+
+    if (amount < MIN_AMOUNTS[currency]) {
+      res.status(400).json({
+        error: `Minimum funding amount for ${currency} is ${MIN_AMOUNTS[currency]}.`,
+      });
       return;
     }
 
@@ -82,7 +185,7 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
         fee: 0,
         reference,
         narration: `Wallet funding - ${currency}`,
-        metadata: { initiatedAt: new Date().toISOString(), flow: 'funding' },
+        metadata: { initiatedAt: new Date().toISOString(), flow: 'funding', countryCode },
       },
     });
 
@@ -97,6 +200,7 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
         payableCode: process.env.INTERSWITCH_PAYABLE_CODE,
         customerId: user.email,
         transactionReference: reference,
+        countryCode,
         redirectUrl: `${process.env.FRONTEND_URL}/wallet/fund/callback?ref=${reference}`,
       },
       {

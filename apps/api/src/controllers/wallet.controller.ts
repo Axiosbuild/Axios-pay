@@ -35,21 +35,26 @@ const paymentLinkSchema = z.object({
 
 const resolveAccountSchema = z.object({
   bankCode: z.string().min(1),
-  accountNumber: z.string().regex(/^\d{10}$/),
+  accountNumber: z.string().regex(/^\d{6,18}$/),
+  countryCode: z.string().trim().regex(/^[a-zA-Z]{2}$/).transform((value) => value.toUpperCase()).optional(),
+  currency: z.enum(['NGN', 'UGX', 'KES', 'GHS', 'ZAR']).optional(),
 });
 
 const sendMoneySchema = z.object({
   bankCode: z.string().min(1),
-  accountNumber: z.string().regex(/^\d{10}$/),
+  accountNumber: z.string().regex(/^\d{6,18}$/),
   accountName: z.string().min(1),
   amount: z.number().positive().min(1000),
   narration: z.string().max(200).optional(),
+  countryCode: z.string().trim().regex(/^[a-zA-Z]{2}$/).transform((value) => value.toUpperCase()).optional(),
+  currency: z.enum(['NGN', 'UGX', 'KES', 'GHS', 'ZAR']).optional(),
 });
 
 const transferToAxiosUserSchema = z.object({
   recipientEmail: z.string().email(),
   amount: z.number().positive().min(100),
   narration: z.string().max(200).optional(),
+  senderCurrency: z.enum(['NGN', 'UGX', 'KES', 'GHS', 'ZAR']).optional(),
 });
 
 const paycodeSchema = z.object({
@@ -250,7 +255,9 @@ export async function deactivatePaymentLink(req: AuthRequest, res: Response, nex
 
 export async function listBanks(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await walletService.listBanksCached();
+    const countryCode = typeof req.query.countryCode === 'string' ? req.query.countryCode : undefined;
+    const currency = typeof req.query.currency === 'string' ? req.query.currency : undefined;
+    const result = await walletService.listBanksCached({ countryCode, currency });
     res.json(result);
   } catch (err) {
     next(err);
@@ -260,7 +267,10 @@ export async function listBanks(req: AuthRequest, res: Response, next: NextFunct
 export async function resolveBankAccount(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const data = resolveAccountSchema.parse(req.body);
-    const result = await walletService.resolveBankAccount(data.bankCode, data.accountNumber);
+    const result = await walletService.resolveBankAccount(data.bankCode, data.accountNumber, {
+      countryCode: data.countryCode,
+      currency: data.currency,
+    });
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -281,6 +291,8 @@ export async function sendTransfer(req: AuthRequest, res: Response, next: NextFu
       amount: data.amount,
       narration: data.narration,
       pinToken: req.header('X-Pin-Token') || undefined,
+      countryCode: data.countryCode,
+      currency: data.currency,
     });
     res.json(result);
   } catch (err) {
@@ -300,7 +312,8 @@ export async function transferToAxiosUser(req: AuthRequest, res: Response, next:
       data.recipientEmail,
       data.amount,
       data.narration,
-      req.header('X-Pin-Token') || undefined
+      req.header('X-Pin-Token') || undefined,
+      data.senderCurrency
     );
     res.json(result);
   } catch (err) {

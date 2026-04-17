@@ -36,6 +36,14 @@ interface QueryTransactionResponse {
   token?: string;
 }
 
+const TRANSFER_CURRENCY_CODE: Record<string, string> = {
+  NGN: '566',
+  KES: '404',
+  UGX: '800',
+  GHS: '936',
+  ZAR: '710',
+};
+
 function logInterswitchApiError(context: string, error: unknown): void {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError;
@@ -354,10 +362,20 @@ export async function createPaymentLink(
   };
 }
 
-export async function getBankList(): Promise<Array<{ code: string; name: string }>> {
+export async function getBankList(params?: {
+  countryCode?: string;
+  currency?: string;
+}): Promise<Array<{ code: string; name: string }>> {
   const token = await getAccessToken();
   const response = await axios.get(`${env.INTERSWITCH_BASE_URL}/api/v1/banks`, {
     headers: { Authorization: `Bearer ${token}` },
+    params:
+      params?.countryCode || params?.currency
+        ? {
+            countryCode: params?.countryCode,
+            currencyCode: params?.currency ? TRANSFER_CURRENCY_CODE[params.currency] ?? params.currency : undefined,
+          }
+        : undefined,
   });
   const banks = (response.data as { data?: Array<{ code?: string; name?: string }> }).data || [];
   return banks
@@ -367,7 +385,11 @@ export async function getBankList(): Promise<Array<{ code: string; name: string 
 
 export async function resolveAccount(
   bankCode: string,
-  accountNumber: string
+  accountNumber: string,
+  params?: {
+    countryCode?: string;
+    currency?: string;
+  }
 ): Promise<{ accountName: string }> {
   const token = await getAccessToken();
   const response = await axios.post(
@@ -375,6 +397,8 @@ export async function resolveAccount(
     {
       bankCode,
       accountNumber,
+      countryCode: params?.countryCode,
+      currencyCode: params?.currency ? TRANSFER_CURRENCY_CODE[params.currency] ?? params.currency : undefined,
     },
     {
       headers: {
@@ -401,6 +425,8 @@ export interface SendMoneyParams {
   amount: number;
   narration?: string;
   senderName: string;
+  senderCurrency?: string;
+  countryCode?: string;
 }
 
 export async function sendMoney(
@@ -418,6 +444,10 @@ export async function sendMoney(
       amount: Math.round(params.amount * 100),
       narration: params.narration || 'Axios Pay Wallet Withdrawal',
       senderName: params.senderName,
+      countryCode: params.countryCode,
+      currencyCode: params.senderCurrency
+        ? TRANSFER_CURRENCY_CODE[params.senderCurrency] ?? params.senderCurrency
+        : undefined,
       reference,
     },
     {
