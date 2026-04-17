@@ -1,413 +1,97 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { NATIONALITY_TO_DIAL_CODE, PHONE_COUNTRY_OPTIONS } from '@/lib/currencies';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 
-const step1Schema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+const schema = z.object({
   email: z.string().email('Valid email required'),
-  nationality: z.enum(['NG', 'UG', 'KE', 'GH', 'ZA'], { required_error: 'Select your country' }),
-});
-
-const step2BaseSchema = z.object({
-  countryCode: z.string().min(1, 'Select country code'),
-  localPhone: z.string().regex(/^\d{6,14}$/, 'Enter a valid local phone number'),
+  username: z
+    .string()
+    .trim()
+    .min(3, 'Username must be at least 3 characters')
+    .max(30, 'Username must be 30 characters or less')
+    .regex(/^[a-zA-Z0-9_.-]+$/, 'Username can only contain letters, numbers, _, ., and -'),
+  phoneNumber: z.string().regex(/^\+?[1-9]\d{6,14}$/, 'Enter a valid phone number'),
+  identity: z.string().trim().min(2, 'Identity is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string().min(1, 'Confirm Password is required'),
+}).refine((data) => data.password === data.confirmPassword, {
+  path: ['confirmPassword'],
+  message: 'Passwords do not match',
 });
 
-const step2Schema = step2BaseSchema
-  .refine((data) => data.password === data.confirmPassword, {
-    path: ['confirmPassword'],
-    message: 'Passwords do not match',
-  });
-
-type Step1 = z.infer<typeof step1Schema>;
-type Step2 = z.infer<typeof step2Schema>;
+type FormData = z.infer<typeof schema>;
 
 export default function RegisterPage() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [step1Data, setStep1Data] = useState<Step1 | null>(null);
-  const [registeredUserId, setRegisteredUserId] = useState('');
-  const [identityData, setIdentityData] = useState({
-    idNumber: '',
-    firstName: '',
-    lastName: '',
-    dateOfBirth: '',
-  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showLoginLinkInError, setShowLoginLinkInError] = useState(false);
-  const [info, setInfo] = useState('');
-  const [emailDeliveryDelayed, setEmailDeliveryDelayed] = useState(false);
-  const [resendingEmail, setResendingEmail] = useState(false);
   const router = useRouter();
-
-  const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema) });
-  const form2 = useForm<Step2>({
-    resolver: zodResolver(step2Schema),
-    mode: 'onChange',
-    defaultValues: { countryCode: '+234', localPhone: '' },
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
   });
-  const passwordValue = form2.watch('password', '');
-  const confirmPasswordValue = form2.watch('confirmPassword', '');
-  const confirmPasswordMatches = confirmPasswordValue.length > 0 && confirmPasswordValue === passwordValue;
-  const passwordChecks = useMemo(
-    () => [
-      { label: 'At least 8 characters', met: passwordValue.length >= 8 },
-      { label: 'One uppercase letter', met: /[A-Z]/.test(passwordValue) },
-      { label: 'One number', met: /\d/.test(passwordValue) },
-    ],
-    [passwordValue]
-  );
 
-  async function onStep1(data: Step1) {
-    console.log('[register] onStep1 submitted — advancing to step 2', data);
-    setError('');
-    setInfo('');
-    setStep1Data(data);
-    form2.setValue('countryCode', NATIONALITY_TO_DIAL_CODE[data.nationality]);
-    setStep(2);
-  }
-
-  async function onStep2(data: Step2) {
-    console.log('[register] onStep2 submitted — attempting API call', data);
-    if (loading) return;
-    if (!step1Data) {
-      console.warn('[register] onStep2: step1Data is missing, cannot register');
-      setError('Something went wrong. Please go back and complete step 1.');
-      return;
-    }
-    const localPhone = data.localPhone.replace(/\D/g, '').replace(/^0+/, '');
-    if (!localPhone) {
-      form2.setError('localPhone', { type: 'manual', message: 'Enter a valid local phone number' });
-      return;
-    }
-    const phone = `${data.countryCode}${localPhone}`;
+  async function onSubmit(data: FormData) {
     setLoading(true);
     setError('');
-    setShowLoginLinkInError(false);
-    setInfo('');
-    setEmailDeliveryDelayed(false);
     try {
       const result = await api.auth.register({
-        ...step1Data,
-        phone,
+        email: data.email,
+        username: data.username,
+        phoneNumber: data.phoneNumber,
+        identity: data.identity,
         password: data.password,
       });
-      if (result.status === 204) {
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('verify_email', step1Data.email);
-          sessionStorage.removeItem('verify_userId');
-          localStorage.removeItem('axiospay_pending_userId');
-        }
-        const params = new URLSearchParams({
-          email: step1Data.email,
-          message: 'Check your email for a verification code',
-        });
-        router.push(`/verify-email?${params.toString()}`);
+
+      const userId = result.data?.data?.userId as string | undefined;
+      if (!userId) {
+        setError('Registration failed. Please try again.');
         return;
       }
-      const userId = result.data?.userId as string | undefined;
-      const emailDelivery = result.data?.emailDelivery as 'sent' | 'deferred' | undefined;
 
       if (typeof window !== 'undefined') {
-        sessionStorage.setItem('verify_email', step1Data.email);
-        if (userId) {
-          sessionStorage.setItem('verify_userId', userId);
-          localStorage.setItem('axiospay_pending_userId', userId);
-        } else {
-          sessionStorage.removeItem('verify_userId');
-          localStorage.removeItem('axiospay_pending_userId');
-        }
+        sessionStorage.setItem('terms_user_id', userId);
       }
-      const params = new URLSearchParams({ email: step1Data.email });
-      if (userId) {
-        params.set('userId', userId);
-      }
-      if (emailDelivery === 'deferred') {
-        params.set('delivery', 'deferred');
-      }
-      router.push(`/verify-email?${params.toString()}`);
-      return;
+
+      router.push(`/terms?userId=${encodeURIComponent(userId)}`);
     } catch (err: unknown) {
-      const e = err as {
-        code?: string;
-        message?: string;
-        response?: {
-          status?: number;
-          data?: {
-            message?: string;
-            error?: string;
-            details?: Array<{ path?: string[]; message?: string }>;
-          };
-        };
-      };
+      const e = err as { response?: { data?: { error?: string } } };
       const code = e?.response?.data?.error || '';
-      const lowerErrorMsg = (e?.message || '').toLowerCase();
-      const requestTimedOut =
-        !e?.response &&
-        (e?.code === 'ECONNABORTED' || lowerErrorMsg.includes('timeout') || lowerErrorMsg.includes('timed out'));
-      if (requestTimedOut) {
-        setError('Registration request timed out. Your account may have been created—check email/spam before retrying.');
-        setShowLoginLinkInError(false);
-        return;
-      }
-      if (code === 'VALIDATION_ERROR') {
-        const details = e?.response?.data?.details || [];
-        details.forEach((detail) => {
-          const field = detail.path?.[0];
-          if (!field || !detail.message) return;
-          if (field in step1Schema.shape) {
-            form1.setError(field as keyof Step1, { type: 'server', message: detail.message });
-          } else if (field in step2BaseSchema.shape) {
-            form2.setError(field as keyof Step2, { type: 'server', message: detail.message });
-          }
-        });
-        setShowLoginLinkInError(false);
-        return;
-      }
-      const status = e?.response?.status;
-      const backendMessage = `${e?.response?.data?.message || ''} ${e?.response?.data?.error || ''}`.toLowerCase();
-      if ((status === 400 || status === 409) && backendMessage.includes('email')) {
-        setError('This email is already registered. Try logging in or use a different email.');
-        setShowLoginLinkInError(true);
-        return;
-      }
-      if ((status === 400 || status === 409) && backendMessage.includes('phone')) {
-        setError('This phone number is already registered.');
-        setShowLoginLinkInError(false);
-        return;
-      }
       const messages: Record<string, string> = {
         EMAIL_EXISTS: 'This email is already registered. Try logging in instead.',
+        USERNAME_EXISTS: 'This username is already registered. Choose a different one.',
         PHONE_EXISTS: 'This phone number is already registered.',
+        INVALID_PHONE_NUMBER: 'Please enter a valid phone number.',
       };
       setError(messages[code] || 'Registration failed. Please check your details and try again.');
-      setShowLoginLinkInError(code === 'EMAIL_EXISTS');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleResendVerificationEmail() {
-    if (!registeredUserId || resendingEmail) return;
-    setResendingEmail(true);
-    setError('');
-    try {
-      await api.auth.resendOTP({ userId: registeredUserId });
-      setInfo('Verification email sent. Please check your inbox and spam folder.');
-      setEmailDeliveryDelayed(false);
-    } catch {
-      setError('Failed to resend verification email. Please try again in a moment.');
-    } finally {
-      setResendingEmail(false);
-    }
-  }
-
-  function continueToEmailVerification(skipForNow: boolean) {
-    if (!registeredUserId) return;
-    if (!skipForNow && typeof window !== 'undefined') {
-      sessionStorage.setItem(
-        'registration_identity_draft',
-        JSON.stringify({
-          nationality: step1Data?.nationality || 'NG',
-          ...identityData,
-        })
-      );
-    }
-    router.push(`/verify-email?userId=${encodeURIComponent(registeredUserId)}`);
-  }
-
-  const identityRequirement = step1Data
-    ? {
-        NG: { label: 'National Identification Number (NIN)', hint: '11 digits e.g. 71234567890' },
-        UG: { label: 'Ndaga Muntu National ID', hint: '14 characters' },
-        KE: { label: 'Kenyan National ID', hint: '8 digits' },
-        GH: { label: 'Ghana Card Number', hint: 'GHA-123456789-0' },
-        ZA: { label: 'South African ID Number', hint: '13 digits' },
-      }[step1Data.nationality]
-    : { label: 'National ID', hint: '' };
-
   return (
     <Card>
-      <div className="mb-6">
-        <div className="w-full bg-border rounded-full h-1.5 mb-4">
-          <div
-            className="bg-brand-amber h-1.5 rounded-full transition-all duration-300"
-            style={{ width: step === 1 ? '34%' : step === 2 ? '67%' : '100%' }}
-          />
-        </div>
-        <h2 className="font-display text-xl font-semibold text-text-primary">
-          {step === 1 ? 'Create your account' : step === 2 ? 'Almost there!' : 'Identity verification (optional)'}
-        </h2>
-        <p className="text-sm text-text-muted mt-1">Step {step} of 3</p>
-      </div>
+      <h2 className="font-display text-xl font-semibold text-text-primary mb-6">Create your account</h2>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">
-          <p>{error}</p>
-          {showLoginLinkInError ? (
-            <p className="mt-1">
-              Already have an account?{' '}
-              <Link href="/login" className="text-brand-amber hover:underline font-medium">Log in</Link>
-            </p>
-          ) : null}
-        </div>
-      )}
-      {info && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-btn text-sm text-text-primary">{info}</div>
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>
       )}
 
-      {step === 1 ? (
-        <form onSubmit={form1.handleSubmit(onStep1)} className="space-y-4">
-          <Input label="First Name" {...form1.register('firstName')} error={form1.formState.errors.firstName?.message} />
-          <Input label="Last Name" {...form1.register('lastName')} error={form1.formState.errors.lastName?.message} />
-          <Input label="Email Address" type="email" {...form1.register('email')} error={form1.formState.errors.email?.message} />
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-text-primary">Country</label>
-            <select
-              {...form1.register('nationality')}
-              className="w-full px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber text-text-primary"
-            >
-              <option value="">Select your country</option>
-              <option value="NG">🇳🇬 Nigeria</option>
-              <option value="UG">🇺🇬 Uganda</option>
-              <option value="KE">🇰🇪 Kenya</option>
-              <option value="GH">🇬🇭 Ghana</option>
-              <option value="ZA">🇿🇦 South Africa</option>
-            </select>
-            {form1.formState.errors.nationality && (
-              <p className="text-sm text-error">{form1.formState.errors.nationality.message}</p>
-            )}
-          </div>
-          <Button type="submit" className="w-full">Continue</Button>
-        </form>
-      ) : step === 2 ? (
-        <form onSubmit={form2.handleSubmit(onStep2)} className="space-y-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-text-primary">Phone Number</label>
-            <div className="flex gap-2">
-              <select
-                {...form2.register('countryCode')}
-                className="w-40 px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber text-text-primary"
-              >
-                {PHONE_COUNTRY_OPTIONS.map((option) => (
-                  <option key={option.nationality} value={option.dialCode}>
-                    {option.flag} {option.dialCode}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="tel"
-                inputMode="numeric"
-                placeholder="8012345678"
-                {...form2.register('localPhone')}
-                className="flex-1 px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber text-text-primary"
-              />
-            </div>
-            {form2.formState.errors.countryCode && (
-              <p className="text-sm text-error">{form2.formState.errors.countryCode.message}</p>
-            )}
-            {form2.formState.errors.localPhone && (
-              <p className="text-sm text-error">{form2.formState.errors.localPhone.message}</p>
-            )}
-          </div>
-          <Input label="Password" type="password" {...form2.register('password')} error={form2.formState.errors.password?.message} />
-          <ul className="space-y-1 text-xs">
-            {passwordChecks.map((check) => (
-              <li key={check.label} className={check.met ? 'text-success' : 'text-error'}>
-                {check.met ? '✅' : '❌'} {check.label}
-              </li>
-            ))}
-          </ul>
-          <Input
-            label="Confirm Password"
-            type="password"
-            {...form2.register('confirmPassword')}
-            error={form2.formState.errors.confirmPassword?.message}
-          />
-          {confirmPasswordValue ? (
-            <p className={`text-xs ${confirmPasswordMatches ? 'text-success' : 'text-error'}`}>
-              {confirmPasswordMatches ? '✅ Passwords match' : '❌ Passwords do not match'}
-            </p>
-          ) : null}
-          <Button type="submit" loading={loading} disabled={loading} className="w-full">Create Account</Button>
-          <Button type="button" variant="ghost" className="w-full" onClick={() => setStep(1)}>Back</Button>
-        </form>
-      ) : (
-        <div className="space-y-4">
-          {emailDeliveryDelayed && (
-            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-btn">
-              <p className="text-sm text-text-primary">
-                Verification email delayed — click resend to retry delivery.
-              </p>
-              <button
-                type="button"
-                className="mt-2 text-sm text-brand-amber hover:underline"
-                onClick={handleResendVerificationEmail}
-                disabled={resendingEmail}
-              >
-                {resendingEmail ? 'Resending...' : 'Resend verification email'}
-              </button>
-            </div>
-          )}
-          <p className="text-sm text-text-secondary">
-            Verify your identity now to unlock higher limits immediately, or skip and do it later in your dashboard.
-          </p>
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-text-primary">{identityRequirement.label}</label>
-            <input
-              value={identityData.idNumber}
-              onChange={(e) => setIdentityData((prev) => ({ ...prev, idNumber: e.target.value }))}
-              placeholder={identityRequirement.hint}
-              className="w-full px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber text-text-primary"
-            />
-            <p className="text-xs text-text-muted">{identityRequirement.hint}</p>
-          </div>
-          <Input
-            label="First Name"
-            value={identityData.firstName}
-            onChange={(e) => setIdentityData((prev) => ({ ...prev, firstName: e.target.value }))}
-          />
-          <Input
-            label="Last Name"
-            value={identityData.lastName}
-            onChange={(e) => setIdentityData((prev) => ({ ...prev, lastName: e.target.value }))}
-          />
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-text-primary">Date of Birth</label>
-            <input
-              type="date"
-              value={identityData.dateOfBirth}
-              onChange={(e) => setIdentityData((prev) => ({ ...prev, dateOfBirth: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-btn border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber text-text-primary"
-            />
-          </div>
-          <p className="text-xs text-text-muted">
-            Your ID number is encrypted and never stored in plain text. We only use it to verify your identity.
-          </p>
-          <Button type="button" className="w-full" onClick={() => continueToEmailVerification(false)}>
-            Verify Now
-          </Button>
-          <button
-            type="button"
-            className="w-full text-sm text-brand-amber hover:underline"
-            onClick={() => continueToEmailVerification(true)}
-          >
-            Skip for now
-          </button>
-        </div>
-      )}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <Input label="Email Address" type="email" {...register('email')} error={errors.email?.message} />
+        <Input label="Username" {...register('username')} error={errors.username?.message} />
+        <Input label="Phone Number" placeholder="+2348012345678" {...register('phoneNumber')} error={errors.phoneNumber?.message} />
+        <Input label="Identity Information" {...register('identity')} error={errors.identity?.message} />
+        <Input label="Password" type="password" {...register('password')} error={errors.password?.message} />
+        <Input label="Confirm Password" type="password" {...register('confirmPassword')} error={errors.confirmPassword?.message} />
+        <Button type="submit" loading={loading} disabled={loading} className="w-full">Create Account</Button>
+      </form>
 
       <p className="text-center text-sm text-text-muted mt-6">
         Already have an account?{' '}

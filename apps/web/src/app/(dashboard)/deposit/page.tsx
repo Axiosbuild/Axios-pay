@@ -148,7 +148,7 @@ export default function DepositPage() {
   }
 
   async function requestPaymentOtp(amountToPay: number): Promise<boolean> {
-    if (!user?.phone) {
+    if (!user?.phoneNumber) {
       setError('A verified phone number is required to request OTP.');
       return false;
     }
@@ -158,7 +158,7 @@ export default function DepositPage() {
     setError('');
     try {
       const result = await api.otp.request({
-        customerPhone: user.phone,
+        customerPhone: user.phoneNumber,
         transactionReference,
         amount: amountToPay,
       });
@@ -204,13 +204,13 @@ export default function DepositPage() {
   }
 
   async function resendPaymentOtp() {
-    if (!user?.phone || !otpTxRef || !otpAmount) return;
+    if (!user?.phoneNumber || !otpTxRef || !otpAmount) return;
     setOtpLoading(true);
     setError('');
     try {
       const result = await api.otp.resend({
         sessionToken: otpSessionToken || undefined,
-        customerPhone: user.phone,
+        customerPhone: user.phoneNumber,
         transactionReference: otpTxRef,
         amount: otpAmount,
       });
