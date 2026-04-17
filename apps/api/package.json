@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "redis:check": "node scripts/redis-check.js",
     "type-check": "tsc --noEmit",
-    "prestart": "npx prisma db push --skip-generate --accept-data-loss",
+    "prestart": "npm run prisma:migrate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"
   },
