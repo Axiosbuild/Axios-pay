@@ -454,7 +454,7 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   } catch (error) {
     const sendFailureError = new Error('VERIFICATION_EMAIL_SEND_FAILED');
     if (error instanceof Error) {
-      (sendFailureError as Error & { cause?: unknown }).cause = error;
+      sendFailureError.cause = error;
     }
     throw sendFailureError;
   }
@@ -574,7 +574,7 @@ async function sendRegistrationVerificationEmail(
     });
     const sendFailureError = new Error('VERIFICATION_EMAIL_SEND_FAILED');
     if (error instanceof Error) {
-      (sendFailureError as Error & { cause?: unknown }).cause = error;
+      sendFailureError.cause = error;
     }
     throw sendFailureError;
   }
