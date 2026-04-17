@@ -67,7 +67,7 @@ export async function register(
     const normalizedEmail = input.email.trim().toLowerCase();
     
     // Auto-generate username if not provided
-    let usernameToUse = input.username?.trim();
+    let usernameToUse = (input.username ?? '').trim();
     if (!usernameToUse) {
       // Extract name from email (part before @)
       const emailPrefix = normalizedEmail.split('@')[0];
