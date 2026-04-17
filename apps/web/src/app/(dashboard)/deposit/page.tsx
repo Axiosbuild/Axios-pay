@@ -198,7 +198,8 @@ export default function DepositPage() {
   const isBusy = isLaunching || isVerifying;
 
   return (
-    <main className="mx-auto min-h-screen max-w-md bg-gray-50 px-5 py-6">
+    <main className="relative mx-auto min-h-screen max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 rounded-card bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.16),_transparent_42%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_38%)]" />
       <Script
         id="interswitch-inline-sdk"
         src={INTERSWITCH_INLINE_SCRIPT_URL}
@@ -216,73 +217,86 @@ export default function DepositPage() {
         }}
       />
 
-      <div className="rounded-3xl bg-white p-6 shadow-xl ring-1 ring-black/5">
-        <div className="inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-xs font-medium text-brand-amber">
+      <section className="overflow-hidden rounded-card border border-border bg-surface p-6 shadow-sm">
+        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
           <BadgeDollarSign className="h-3.5 w-3.5" />
-          Fund Wallet
+          Deposit
         </div>
 
-        <h1 className="mt-4 font-display text-3xl font-bold text-text-primary">Deposit with Interswitch</h1>
-        <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+        <h1 className="mt-4 font-display text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Fund Wallet with Card</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-secondary">
           Enter the amount you want to fund, then pay securely with your card in the Interswitch inline modal.
         </p>
 
-        <div className="mt-6 rounded-2xl border border-border bg-page p-4">
-          <label htmlFor="amount" className="mb-2 block text-sm font-medium text-text-secondary">
-            Amount (NGN)
-          </label>
-          <input
-            id="amount"
-            type="text"
-            inputMode="decimal"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="1000"
-            className="w-full rounded-2xl border border-border bg-white px-4 py-4 font-mono text-2xl text-text-primary outline-none placeholder:text-text-muted focus:border-brand-amber"
-          />
-          <p className="mt-2 text-xs text-text-muted">NGN {formattedAmount}</p>
-        </div>
+        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+            <div className="rounded-card border border-border bg-page p-4">
+              <label htmlFor="amount" className="mb-2 block text-sm font-medium text-text-secondary">
+                Amount (NGN)
+              </label>
+              <input
+                id="amount"
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder="1000"
+                className="w-full rounded-2xl border border-border bg-white px-4 py-4 font-mono text-2xl text-text-primary outline-none placeholder:text-text-muted focus:border-brand-amber"
+              />
+              <p className="mt-2 text-xs text-text-muted">NGN {formattedAmount}</p>
+            </div>
 
-        <div className="mt-4 rounded-2xl border border-border bg-page p-4">
-          <label htmlFor="email" className="mb-2 block text-sm font-medium text-text-secondary">
-            Email for receipt
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
-            className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-text-primary outline-none placeholder:text-text-muted focus:border-brand-amber"
-          />
-        </div>
+            <div className="rounded-card border border-border bg-page p-4">
+              <label htmlFor="email" className="mb-2 block text-sm font-medium text-text-secondary">
+                Email for receipt
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-text-primary outline-none placeholder:text-text-muted focus:border-brand-amber"
+              />
+            </div>
 
-        <div className="mt-4 rounded-2xl bg-subtle p-4 text-sm text-text-secondary">
-          <p className="font-medium text-text-primary">Current wallet balance</p>
-          <p className="mt-1 font-mono text-lg text-text-primary">
-            NGN {walletBalance.toLocaleString('en-NG', { maximumFractionDigits: 2 })}
-          </p>
-        </div>
+            <button
+              type="button"
+              onClick={handleFundWallet}
+              disabled={!isScriptReady || isBusy || parsedAmount < 100}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-btn bg-navy px-6 py-4 text-base font-semibold text-white transition hover:bg-navy-medium disabled:cursor-not-allowed disabled:bg-navy/40"
+            >
+              {isBusy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}
+              {isVerifying ? 'Verifying deposit...' : 'Pay with Card'}
+            </button>
+          </div>
 
-        <button
-          type="button"
-          onClick={handleFundWallet}
-          disabled={!isScriptReady || isBusy || parsedAmount < 100}
-          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-navy py-4 text-base font-semibold text-white transition hover:bg-navy-medium disabled:cursor-not-allowed disabled:bg-navy/40"
-        >
-          {isBusy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}
-          {isVerifying ? 'Verifying deposit...' : 'Pay with Card'}
-        </button>
-
-        <div className="mt-4 flex items-start gap-2 rounded-2xl border border-border bg-white p-4 text-xs text-text-secondary">
-          <ShieldCheck className="mt-0.5 h-4 w-4 text-success" />
-          <p>
-            This opens a secure Interswitch inline card modal on the same page. No redirect is required for the payment step.
-          </p>
+          <aside className="space-y-4">
+            <div className="rounded-card border border-border bg-surface p-4 text-sm text-text-secondary">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Wallet balance</p>
+              <p className="mt-2 font-mono text-2xl font-semibold text-text-primary">
+                NGN {walletBalance.toLocaleString('en-NG', { maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="rounded-card border border-emerald-100 bg-emerald-50/70 p-4 text-xs text-emerald-900">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 text-emerald-600" />
+                <p>
+                  This opens a secure Interswitch inline card modal on the same page. No redirect is required for the payment step.
+                </p>
+              </div>
+            </div>
+            {pendingTxnRef ? (
+              <div className="rounded-card border border-border bg-page p-4 text-xs text-text-muted">
+                <p className="font-medium text-text-secondary">Last transaction reference</p>
+                <p className="mt-1 break-all font-mono text-text-primary">{pendingTxnRef}</p>
+              </div>
+            ) : null}
+          </aside>
         </div>
 
         {message && <p className="mt-4 text-sm font-medium text-text-primary">{message}</p>}
-      </div>
+      </section>
     </main>
   );
 }
