@@ -28,17 +28,23 @@ const envSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().min(1).default('placeholder-twilio-sid'),
   TWILIO_AUTH_TOKEN: z.string().min(1).default('placeholder-twilio-token'),
   TWILIO_PHONE_NUMBER: z.string().min(1).default('placeholder-twilio-number'),
+  SMTP_HOST: z.string().min(1).default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().default(465),
+  SMTP_SECURE: z.coerce.boolean().default(true),
   SMTP_USER: z.string().email().default('info@axiospay.space'),
-  SMTP_FROM: z.string().email().default('info@axiospay.space'),
+  EMAIL_FROM: z.string().email().optional(),
+  SMTP_FROM: z.string().email().optional(),
   SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
   SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().default(5000),
   SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().default(10000),
   SMTP_SEND_TIMEOUT_MS: z.coerce.number().default(5000),
+  APP_BASE_URL: z.string().url().default('http://localhost:8080').transform((value) => new URL(value).origin),
   FRONTEND_URL: z
     .string()
     .url()
     .default('http://localhost:3000')
     .transform((value) => new URL(value).origin),
+  VERIFICATION_TOKEN_TTL_MINUTES: z.coerce.number().int().min(10).max(30).default(15),
   ENCRYPTION_KEY: z.string().min(32).default(crypto.randomBytes(32).toString('hex')),
   CRON_ENABLED: z.coerce.boolean().default(true),
   ADMIN_EMAIL: z.string().email().default('admin@example.com'),
@@ -78,6 +84,10 @@ const defaultedKeys = [
   'NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID',
   'INTERSWITCH_WEBHOOK_SECRET',
   'SMTP_USER',
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_SECURE',
+  'EMAIL_FROM',
   'SMTP_FROM',
   'SMTP_PASS',
   'SMTP_CONNECTION_TIMEOUT_MS',
@@ -100,8 +110,9 @@ if (missingKeys.length > 0) {
   );
 }
 
-const normalizedEnv = {
+  const normalizedEnv = {
   ...result.data,
+  EMAIL_FROM: result.data.EMAIL_FROM || result.data.SMTP_FROM || result.data.SMTP_USER,
   // BASE_URL is kept for requested .env compatibility, while INTERSWITCH_BASE_URL
   // is the canonical key consumed by services in this codebase.
   INTERSWITCH_BASE_URL: result.data.INTERSWITCH_BASE_URL || result.data.BASE_URL,

@@ -13,8 +13,14 @@ import {
   storeVerificationValue,
   verifyOTP,
 } from './otp.service';
-import { sendEmailOTP, sendWelcomeEmail, sendPasswordResetOTP, sendLoginNotificationEmail } from './email.service';
+import { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetOTP, sendLoginNotificationEmail } from './email.service';
 import * as twoFactorService from './twoFactor.service';
+import {
+  buildVerificationExpiry,
+  generateVerificationCode,
+  generateVerificationToken,
+  hashVerificationValue,
+} from '../utils/verification';
 
 const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
   NG: 'NGN',
@@ -24,10 +30,8 @@ const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
   ZA: 'ZAR',
 };
 
-const OTP_TTL = 600; // 10 minutes in seconds
 const RESET_OTP_TTL = 900; // 15 minutes
 const REGISTER_IDEMPOTENCY_TTL_SECONDS = 60 * 10;
-const VERIFICATION_TOKEN_EXPIRY = '1h';
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
@@ -77,6 +81,7 @@ export async function register(
   }
 
   try {
+    const normalizedEmail = input.email.trim().toLowerCase();
     const passwordHash = await bcrypt.hash(input.password, 12);
     const nativeCurrency = NATIONALITY_CURRENCY_MAP[input.nationality.toUpperCase()];
 
@@ -84,16 +89,16 @@ export async function register(
       async (tx) => {
         const existingUser = await tx.user.findFirst({
           where: {
-            OR: [
-              { email: input.email },
-              { phone: input.phone },
-              ...(input.nationalId ? [{ nationalIdNumber: input.nationalId }] : []),
-            ],
+              OR: [
+                { email: normalizedEmail },
+                { phone: input.phone },
+                ...(input.nationalId ? [{ nationalIdNumber: input.nationalId }] : []),
+              ],
           },
           select: { email: true, phone: true, nationalIdNumber: true },
         });
 
-        if (existingUser?.email === input.email) {
+        if (existingUser?.email === normalizedEmail) {
           throw new Error('EMAIL_EXISTS');
         }
         if (existingUser?.phone === input.phone) {
@@ -105,7 +110,7 @@ export async function register(
 
         return tx.user.create({
           data: {
-            email: input.email,
+            email: normalizedEmail,
             phone: input.phone,
             passwordHash,
             firstName: input.firstName,
@@ -126,33 +131,34 @@ export async function register(
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
 
-    const emailOTP = generateOTP();
-    const otpExpiry = new Date(Date.now() + OTP_TTL * 1000);
-    const verificationToken = signVerificationToken(user.id, user.email);
+    const verificationToken = generateVerificationToken();
+    const verificationCode = generateVerificationCode();
+    const verificationExpiry = buildVerificationExpiry(env.VERIFICATION_TOKEN_TTL_MINUTES);
+    const verificationTokenHash = hashVerificationValue(verificationToken);
+    const verificationCodeHash = hashVerificationValue(verificationCode);
     const verificationLink = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
-    // Store code in DB and keep Redis OTP for backward-compat code verification
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        verificationCode: emailOTP,
-        verificationCodeExpiry: otpExpiry,
+        verificationTokenHash,
+        verificationCodeHash,
+        verificationCodeExpiry: verificationExpiry,
       },
     });
-    await storeOTP(`email:${user.id}`, emailOTP, OTP_TTL);
 
     const emailDelivery = await sendRegistrationVerificationEmail(
       user.id,
       user.email,
       user.firstName,
-      emailOTP,
+      verificationCode,
       verificationLink,
       context
     );
 
     const response = {
       userId: user.id,
-      message: 'Registration successful',
+      message: 'Verification email sent.',
       requiresVerification: true as const,
       emailDelivery,
       emailSent: true as const,
@@ -185,70 +191,39 @@ export async function register(
   }
 }
 
-export async function verifyEmail(userId: string, otp: string): Promise<{ verified: boolean }> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new Error('USER_NOT_FOUND');
-  if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
-
-  // Check DB-stored verification code first; fall back to Redis for backward compat.
-  if (user.verificationCode !== null && user.verificationCodeExpiry !== null) {
-    if (user.verificationCode !== otp) throw new Error('OTP_INVALID');
-    if (user.verificationCodeExpiry < new Date()) throw new Error('OTP_EXPIRED');
-  } else {
-    await verifyOTP(`email:${userId}`, otp);
+export async function verifyEmail(input: {
+  token?: string;
+  email?: string;
+  code?: string;
+  userId?: string;
+  otp?: string;
+}): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
+  if (input.token) {
+    return verifyEmailByToken(input.token);
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      isEmailVerified: true,
-      isPhoneVerified: true,
-      verificationCode: null,
-      verificationCodeExpiry: null,
-    },
-  });
+  if (input.email && input.code) {
+    return verifyEmailByCode(input.email, input.code);
+  }
 
-  await deleteVerificationValue(`otp:email:${userId}`);
-  await sendWelcomeEmail(user.email, user.firstName);
+  if (input.userId && input.otp) {
+    const user = await prisma.user.findUnique({ where: { id: input.userId } });
+    if (!user) throw new Error('USER_NOT_FOUND');
+    return verifyEmailByCode(user.email, input.otp);
+  }
 
-  return { verified: true };
+  throw new Error('INVALID_PARAMETERS');
 }
 
 export async function verifyEmailLink(
   userId: string,
   token: string
 ): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new Error('USER_NOT_FOUND');
-
-  if (user.isEmailVerified) {
-    return { verified: true, userId, alreadyVerified: true };
-  }
-
-  // Verify JWT token (new flow) — userId in token must match path param.
-  try {
-    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as { type?: string; userId?: string; email?: string };
-    if (decoded.type !== 'email_verification' || decoded.userId !== userId) {
-      throw new Error('INVALID_TOKEN');
-    }
-  } catch {
+  const result = await verifyEmailByToken(token);
+  if (result.userId !== userId) {
     throw new Error('INVALID_TOKEN');
   }
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      isEmailVerified: true,
-      isPhoneVerified: true,
-      verificationCode: null,
-      verificationCodeExpiry: null,
-    },
-  });
-
-  await deleteVerificationValue(`otp:email:${userId}`);
-  await sendWelcomeEmail(user.email, user.firstName);
-
-  return { verified: true, userId };
+  return result;
 }
 
 export async function verifyPhone(userId: string, otp: string): Promise<{ verified: boolean }> {
@@ -459,24 +434,36 @@ export async function resendOTP(input: { userId?: string; email?: string }): Pro
   if (!user) throw new Error('USER_NOT_FOUND');
   if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
 
-  const otp = generateOTP();
-  const otpExpiry = new Date(Date.now() + OTP_TTL * 1000);
-  const verificationToken = signVerificationToken(user.id, user.email);
+  const verificationToken = generateVerificationToken();
+  const verificationCode = generateVerificationCode();
+  const verificationExpiry = buildVerificationExpiry(env.VERIFICATION_TOKEN_TTL_MINUTES);
   const verificationLink = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      verificationCode: otp,
-      verificationCodeExpiry: otpExpiry,
+      verificationTokenHash: hashVerificationValue(verificationToken),
+      verificationCodeHash: hashVerificationValue(verificationCode),
+      verificationCodeExpiry: verificationExpiry,
     },
   });
-  await storeOTP(`email:${user.id}`, otp, OTP_TTL);
 
-  await sendEmailOTP(user.email, user.firstName, otp, verificationLink);
-  console.log('Resend OTP verification email sent', { userId: user.id });
+  try {
+    await sendVerificationEmail(user.email, user.firstName, verificationCode, verificationLink);
+    console.log('Resend verification email sent', { userId: user.id });
+  } catch (error) {
+    const sendFailureError = new Error('VERIFICATION_EMAIL_SEND_FAILED');
+    if (error instanceof Error) {
+      (sendFailureError as Error & { cause?: unknown }).cause = error;
+    }
+    throw sendFailureError;
+  }
 
   return { userId: user.id };
+}
+
+export async function resendVerification(input: { userId?: string; email?: string }): Promise<{ userId: string }> {
+  return resendOTP(input);
 }
 
 // POST /api/v1/auth/send-verification — resend by email
@@ -487,66 +474,79 @@ export async function sendVerification(email: string): Promise<{ message: string
 
 // POST /api/v1/auth/verify-code — verify 6-digit code by email
 export async function verifyCode(email: string, code: string): Promise<{ verified: boolean }> {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new Error('USER_NOT_FOUND');
-  if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
-
-  if (!user.verificationCode || !user.verificationCodeExpiry) {
-    // Fall back to Redis-based OTP if DB fields are not populated yet.
-    await verifyOTP(`email:${user.id}`, code);
-  } else {
-    if (user.verificationCode !== code) throw new Error('OTP_INVALID');
-    if (user.verificationCodeExpiry < new Date()) throw new Error('OTP_EXPIRED');
-  }
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      isEmailVerified: true,
-      isPhoneVerified: true,
-      verificationCode: null,
-      verificationCodeExpiry: null,
-    },
-  });
-
-  await sendWelcomeEmail(user.email, user.firstName);
-
-  return { verified: true };
+  const result = await verifyEmailByCode(email, code);
+  return { verified: result.verified };
 }
 
-// POST /api/v1/auth/verify-email-token — verify JWT token from email link
+// POST /api/v1/auth/verify-email-token — verify opaque token from email link
 export async function verifyEmailToken(token: string): Promise<{ verified: boolean; userId: string }> {
-  let decoded: { type?: string; userId?: string; email?: string };
-  try {
-    decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as { type?: string; userId?: string; email?: string };
-  } catch {
+  const result = await verifyEmailByToken(token);
+  return { verified: result.verified, userId: result.userId };
+}
+
+async function verifyEmailByToken(token: string): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
+  const tokenHash = hashVerificationValue(token);
+  const user = await prisma.user.findFirst({
+    where: { verificationTokenHash: tokenHash },
+  });
+
+  if (!user) {
     throw new Error('INVALID_TOKEN');
   }
 
-  if (decoded.type !== 'email_verification' || !decoded.userId) {
+  if (user.isEmailVerified) {
+    return { verified: true, userId: user.id, alreadyVerified: true };
+  }
+
+  if (!user.verificationCodeExpiry || user.verificationCodeExpiry < new Date()) {
     throw new Error('INVALID_TOKEN');
   }
 
-  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+  await markEmailVerified(user.id, user.email, user.firstName);
+  return { verified: true, userId: user.id };
+}
+
+async function verifyEmailByCode(
+  email: string,
+  code: string
+): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (!user) throw new Error('USER_NOT_FOUND');
   if (user.isEmailVerified) {
-    return { verified: true, userId: user.id };
+    return { verified: true, userId: user.id, alreadyVerified: true };
   }
 
+  if (!user.verificationCodeHash || !user.verificationCodeExpiry) {
+    throw new Error('OTP_EXPIRED');
+  }
+
+  if (user.verificationCodeExpiry < new Date()) {
+    throw new Error('OTP_EXPIRED');
+  }
+
+  if (hashVerificationValue(code) !== user.verificationCodeHash) {
+    throw new Error('OTP_INVALID');
+  }
+
+  await markEmailVerified(user.id, user.email, user.firstName);
+  return { verified: true, userId: user.id };
+}
+
+async function markEmailVerified(userId: string, email: string, firstName: string): Promise<void> {
   await prisma.user.update({
-    where: { id: user.id },
+    where: { id: userId },
     data: {
       isEmailVerified: true,
       isPhoneVerified: true,
-      verificationCode: null,
+      verificationTokenHash: null,
+      verificationCodeHash: null,
       verificationCodeExpiry: null,
     },
   });
 
-  await deleteVerificationValue(`otp:email:${user.id}`);
-  await sendWelcomeEmail(user.email, user.firstName);
-
-  return { verified: true, userId: user.id };
+  await deleteVerificationValue(`otp:email:${userId}`);
+  await sendWelcomeEmail(email, firstName);
 }
 
 async function sendRegistrationVerificationEmail(
@@ -558,7 +558,7 @@ async function sendRegistrationVerificationEmail(
   context?: RegisterContext
 ): Promise<'sent'> {
   try {
-    await sendEmailOTP(email, firstName, otp, verificationLink);
+    await sendVerificationEmail(email, firstName, otp, verificationLink);
     console.log('Registration verification email sent', {
       userId,
       requestId: context?.requestId,
@@ -584,14 +584,6 @@ function signAccessToken(userId: string): string {
   return jwt.sign({ sub: userId, type: 'access' }, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_EXPIRY,
   } as jwt.SignOptions);
-}
-
-function signVerificationToken(userId: string, email: string): string {
-  return jwt.sign(
-    { type: 'email_verification', userId, email },
-    env.JWT_ACCESS_SECRET,
-    { expiresIn: VERIFICATION_TOKEN_EXPIRY } as jwt.SignOptions
-  );
 }
 
 function mapRegisterErrorCode(error: unknown): string | null {

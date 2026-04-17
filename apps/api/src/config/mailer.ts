@@ -2,9 +2,9 @@ import nodemailer from 'nodemailer';
 import { env } from './env';
 
 export const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  host: env.SMTP_HOST,
+  port: env.SMTP_PORT,
+  secure: env.SMTP_SECURE,
   pool: true,
   maxConnections: 5,
   connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
@@ -15,11 +15,24 @@ export const transporter = nodemailer.createTransport({
   },
 });
 
-// Verify SMTP connection at startup so misconfiguration is visible in logs.
-transporter.verify((error) => {
-  if (error) {
-    console.warn('⚠️  SMTP transport verification failed:', error.message);
-  } else {
-    console.log('✅  SMTP transport ready — connected to smtp.gmail.com:465');
+export async function verifySmtpTransport(): Promise<void> {
+  try {
+    await transporter.verify();
+    console.log(`✅ SMTP transport ready (${env.SMTP_HOST}:${env.SMTP_PORT}, secure=${env.SMTP_SECURE})`);
+  } catch (error) {
+    const smtpError = error as Partial<{
+      message: string;
+      code: string;
+      command: string;
+      response: string;
+      responseCode: number;
+    }>;
+    console.error('⚠️ SMTP transport verification failed', {
+      message: smtpError.message || 'Unknown SMTP verification error',
+      code: smtpError.code,
+      command: smtpError.command,
+      response: smtpError.response,
+      responseCode: smtpError.responseCode,
+    });
   }
-});
+}
