@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -22,16 +22,24 @@
 }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   background-color: var(--page-bg);
   color: var(--text-primary);
 }
 
-@keyframes ticker {
+html {
+  scroll-behavior: smooth;
+}
+
+@keyframes marquee {
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
 
+.animate-marquee {
+  animation: marquee 28s linear infinite;
+}
+
 .animate-ticker {
-  animation: ticker 30s linear infinite;
+  animation: marquee 30s linear infinite;
 }
