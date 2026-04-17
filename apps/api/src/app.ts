@@ -30,7 +30,7 @@ const allowedOrigins = new Set([
 const corsOptions: cors.CorsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Idempotency-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Idempotency-Key', 'Accept', 'Origin'],
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.has(origin)) {
       callback(null, true);
@@ -105,7 +105,8 @@ const logRouteTree = (): void => {
 
 app.use(helmet());
 app.use(cors(corsOptions));
-app.options('*', cors());
+app.options('/api/v1/auth/register', cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(compression());
 app.use(morgan('combined'));
 
