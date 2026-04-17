@@ -98,12 +98,13 @@ interface InitiatePaymentParams {
   amount: number; // amount in NGN
   userId: string;
   userEmail: string;
+  transactionReference?: string;
 }
 
 export async function initiatePayment(
   params: InitiatePaymentParams
 ): Promise<{ paymentUrl: string; reference: string }> {
-  const reference = nanoid(20);
+  const reference = params.transactionReference ?? nanoid(20);
   const amountInKobo = Math.round(params.amount * 100);
   const token = await getAccessToken();
 

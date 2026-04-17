@@ -3,9 +3,12 @@ import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth.middleware';
 import * as walletService from '../services/wallet.service';
 import { prisma } from '../config/prisma';
+import { deleteOtpSession, getOtpSession } from '../services/otpStore';
 
 const fundSchema = z.object({
   amount: z.number().positive().min(100),
+  transferToken: z.string().min(1).optional(),
+  transactionReference: z.string().min(1).optional(),
 });
 
 const swapSchema = z.object({
@@ -65,6 +68,24 @@ export async function getWallets(req: AuthRequest, res: Response, next: NextFunc
 export async function fundWallet(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const data = fundSchema.parse(req.body);
+    if (!data.transferToken || !data.transactionReference) {
+      res.status(403).json({ error: 'OTP verification required before payment initiation.' });
+      return;
+    }
+
+    const otpSession = getOtpSession(data.transferToken);
+
+    if (!otpSession || !otpSession.verified) {
+      res.status(403).json({ error: 'Invalid or unverified transfer token.' });
+      return;
+    }
+
+    if (otpSession.transactionReference !== data.transactionReference) {
+      res.status(403).json({ error: 'Transfer token does not match transaction reference.' });
+      return;
+    }
+
+    deleteOtpSession(data.transferToken);
 
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
@@ -79,7 +100,8 @@ export async function fundWallet(req: AuthRequest, res: Response, next: NextFunc
     const result = await walletService.fundWallet(
       req.userId!,
       data.amount,
-      user.email
+      user.email,
+      data.transactionReference
     );
 
     res.json(result);

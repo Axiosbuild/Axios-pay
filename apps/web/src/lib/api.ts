@@ -231,6 +231,14 @@ export const api = {
         headers: pinToken ? { 'X-Pin-Token': pinToken } : undefined,
       }),
   },
+  otp: {
+    request: (data: { customerPhone: string; transactionReference: string; amount: number }) =>
+      apiClient.post('/otp/request', data),
+    verify: (data: { sessionToken: string; otp: string; transactionReference: string }) =>
+      apiClient.post('/otp/verify', data),
+    resend: (data: { sessionToken?: string; customerPhone: string; transactionReference: string; amount: number }) =>
+      apiClient.post('/otp/resend', data),
+  },
   funding: {
     fundWallet: (data: { amount: number; email: string }) =>
       fundingClient.post('/fund-wallet', data),

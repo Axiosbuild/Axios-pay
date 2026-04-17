@@ -8,6 +8,7 @@ import { Copy } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { OTPInput } from '@/components/ui/OTPInput';
 import { useAuthStore } from '@/store/authStore';
 
 const schema = z.object({
@@ -49,6 +50,13 @@ export default function DepositPage() {
   const [recurringItems, setRecurringItems] = useState<
     Array<{ id: string; amount: string; frequency: string; nextRunAt: string }>
   >([]);
+  const [otpSessionToken, setOtpSessionToken] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpTxRef, setOtpTxRef] = useState('');
+  const [transferToken, setTransferToken] = useState('');
+  const [otpAmount, setOtpAmount] = useState<number | null>(null);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
   const { user } = useAuthStore();
 
   const {
@@ -64,6 +72,7 @@ export default function DepositPage() {
   const {
     register: registerUssd,
     handleSubmit: handleUssdSubmit,
+    watch: watchUssd,
     formState: { errors: ussdErrors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -71,6 +80,7 @@ export default function DepositPage() {
   });
 
   const amount = watch('amount') || 0;
+  const ussdAmount = watchUssd('amount') || 0;
   const fee = useMemo(() => (amount > 0 ? amount * 0.015 : 0), [amount]);
   const total = useMemo(() => amount + fee, [amount, fee]);
 
@@ -125,8 +135,102 @@ export default function DepositPage() {
     window.setTimeout(() => setCopyMessage(''), 2000);
   }
 
-  async function initiateDeposit(amountToPay: number): Promise<{ paymentUrl: string; reference: string }> {
-    const result = await api.wallets.initiateDeposit({ amount: amountToPay });
+  function buildTransactionReference(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  async function requestPaymentOtp(amountToPay: number): Promise<boolean> {
+    if (!user?.phone) {
+      setError('A verified phone number is required to request OTP.');
+      return false;
+    }
+
+    const transactionReference = buildTransactionReference();
+    setOtpLoading(true);
+    setError('');
+    try {
+      const result = await api.otp.request({
+        customerPhone: user.phone,
+        transactionReference,
+        amount: amountToPay,
+      });
+      setOtpSessionToken(result.data?.sessionToken ?? '');
+      setOtpTxRef(transactionReference);
+      setOtpAmount(amountToPay);
+      setTransferToken('');
+      setOtpVerified(false);
+      setOtpCode('');
+      setInlineMessage('OTP sent. Enter the code to continue.');
+      return true;
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+      setError(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to request OTP.');
+      return false;
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function verifyPaymentOtp() {
+    if (!otpSessionToken || !otpTxRef || otpCode.length !== 6) {
+      setError('Enter the 6-digit OTP code.');
+      return;
+    }
+    setOtpLoading(true);
+    setError('');
+    try {
+      const result = await api.otp.verify({
+        sessionToken: otpSessionToken,
+        otp: otpCode,
+        transactionReference: otpTxRef,
+      });
+      setTransferToken(result.data?.transferToken ?? '');
+      setOtpVerified(true);
+      setInlineMessage('OTP verified. You can now complete this payment.');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+      setError(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'OTP verification failed.');
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function resendPaymentOtp() {
+    if (!user?.phone || !otpTxRef || !otpAmount) return;
+    setOtpLoading(true);
+    setError('');
+    try {
+      const result = await api.otp.resend({
+        sessionToken: otpSessionToken || undefined,
+        customerPhone: user.phone,
+        transactionReference: otpTxRef,
+        amount: otpAmount,
+      });
+      setOtpSessionToken(result.data?.sessionToken ?? '');
+      setOtpCode('');
+      setOtpVerified(false);
+      setTransferToken('');
+      setInlineMessage('OTP resent.');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+      setError(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to resend OTP.');
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function initiateDeposit(
+    amountToPay: number,
+    payload: { transferToken: string; transactionReference: string }
+  ): Promise<{ paymentUrl: string; reference: string }> {
+    const result = await api.wallets.initiateDeposit({
+      amount: amountToPay,
+      transferToken: payload.transferToken,
+      transactionReference: payload.transactionReference,
+    });
     const paymentUrl = result.data?.paymentUrl as string | undefined;
     const reference = result.data?.reference as string | undefined;
     if (!paymentUrl || !reference) throw new Error('Payment link unavailable. Please try again.');
@@ -151,7 +255,21 @@ export default function DepositPage() {
     setError('');
     setInlineMessage('');
     try {
-      const { reference } = await initiateDeposit(data.amount);
+      if (!otpVerified || !transferToken || !otpTxRef || otpAmount !== data.amount) {
+        await requestPaymentOtp(data.amount);
+        return;
+      }
+
+      const { reference } = await initiateDeposit(data.amount, {
+        transferToken,
+        transactionReference: otpTxRef,
+      });
+      setOtpSessionToken('');
+      setOtpCode('');
+      setOtpTxRef('');
+      setTransferToken('');
+      setOtpAmount(null);
+      setOtpVerified(false);
       if (!window.webpayCheckout) {
         setError('Inline checkout is unavailable. Please refresh and try again.');
         return;
@@ -185,12 +303,27 @@ export default function DepositPage() {
     setUssdLoading(true);
     setError('');
     try {
-      const result = await api.wallets.initiateDeposit({ amount: data.amount });
+      if (!otpVerified || !transferToken || !otpTxRef || otpAmount !== data.amount) {
+        await requestPaymentOtp(data.amount);
+        return;
+      }
+
+      const result = await api.wallets.initiateDeposit({
+        amount: data.amount,
+        transferToken,
+        transactionReference: otpTxRef,
+      });
       const reference = result.data?.reference as string | undefined;
       if (!reference) {
         setError('Unable to generate USSD code. Please try again.');
         return;
       }
+      setOtpSessionToken('');
+      setOtpCode('');
+      setOtpTxRef('');
+      setTransferToken('');
+      setOtpAmount(null);
+      setOtpVerified(false);
       setUssdCode(`*322*${merchantCode}*${Math.round(data.amount)}*${reference}#`);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
@@ -292,6 +425,30 @@ export default function DepositPage() {
               </div>
             )}
 
+            <div className="bg-brand-bg rounded-btn p-3 space-y-3">
+              <p className="text-sm text-text-secondary">Step 1: Verify OTP before payment initiation.</p>
+              {otpVerified && otpAmount === amount ? (
+                <p className="text-sm text-success">OTP verified. Proceed to pay.</p>
+              ) : (
+                <>
+                  <OTPInput value={otpCode} onChange={setOtpCode} />
+                  <div className="flex gap-2">
+                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => requestPaymentOtp(amount)}>
+                      Request OTP
+                    </Button>
+                    <Button type="button" className="w-full" loading={otpLoading} onClick={() => verifyPaymentOtp()}>
+                      Verify OTP
+                    </Button>
+                  </div>
+                  {otpSessionToken && (
+                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => resendPaymentOtp()}>
+                      Resend OTP
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+
             <Button type="submit" loading={cardLoading} className="w-full">
               Pay with Card
             </Button>
@@ -341,6 +498,30 @@ export default function DepositPage() {
                 />
               </div>
               {ussdErrors.amount?.message && <p className="text-sm text-error">{ussdErrors.amount.message}</p>}
+            </div>
+
+            <div className="bg-brand-bg rounded-btn p-3 space-y-3">
+              <p className="text-sm text-text-secondary">Step 1: Verify OTP before USSD code generation.</p>
+              {otpVerified && otpAmount === ussdAmount ? (
+                <p className="text-sm text-success">OTP verified. You can generate your code.</p>
+              ) : (
+                <>
+                  <OTPInput value={otpCode} onChange={setOtpCode} />
+                  <div className="flex gap-2">
+                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => requestPaymentOtp(ussdAmount)}>
+                      Request OTP
+                    </Button>
+                    <Button type="button" className="w-full" loading={otpLoading} onClick={() => verifyPaymentOtp()}>
+                      Verify OTP
+                    </Button>
+                  </div>
+                  {otpSessionToken && (
+                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => resendPaymentOtp()}>
+                      Resend OTP
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
 
             <Button type="submit" loading={ussdLoading} className="w-full">
