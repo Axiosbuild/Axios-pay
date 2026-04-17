@@ -5,11 +5,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Card } from '@/components/ui/Card';
 import { OTPInput } from '@/components/ui/OTPInput';
 
 const schema = z.object({
@@ -77,17 +77,23 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-white/80 backdrop-blur p-8 shadow-sm">
-      <h2 className="font-display text-2xl font-bold text-text-primary mb-2">Log in to your account</h2>
-      <p className="text-sm text-text-secondary mb-8">Access your wallets and start sending money instantly.</p>
+    <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+      <div className="mb-6">
+        <p className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+          <Sparkles className="h-3.5 w-3.5" />
+          Welcome Back
+        </p>
+        <h2 className="mt-4 font-display text-2xl font-bold text-slate-950">Log in to your account</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Access your wallets and start sending money instantly.</p>
+      </div>
 
       {message && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-success">
+        <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {message}
         </div>
       )}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-error">{error}</div>
+        <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-error">{error}</div>
       )}
 
       {!requires2FA ? (
@@ -105,27 +111,32 @@ function LoginPageContent() {
             error={errors.password?.message}
           />
           <div className="text-right">
-            <Link href="/forgot-password" className="text-xs text-brand-amber hover:text-brand-gold transition">
+            <Link href="/forgot-password" className="text-xs font-medium text-emerald-700 transition hover:text-emerald-600">
               Forgot password?
             </Link>
           </div>
-          <Button type="submit" loading={loading} className="w-full mt-6">
+          <Button type="submit" loading={loading} className="mt-2 w-full bg-slate-900 hover:bg-slate-800">
             Log In
           </Button>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+            <p className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Use your registered phone or username for faster sign-in.</p>
+            <p className="mt-2 flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> If 2FA is enabled, keep your authenticator app ready.</p>
+          </div>
         </form>
       ) : (
         <div className="space-y-4">
-          <p className="text-sm text-text-secondary">Enter the 6-digit code from your authenticator app.</p>
+          <p className="text-sm text-slate-600">Enter the 6-digit code from your authenticator app.</p>
           <OTPInput value={twoFactorCode} onChange={setTwoFactorCode} length={6} />
-          <Button onClick={onVerify2FA} loading={loading} className="w-full mt-6" disabled={twoFactorCode.length !== 6}>
+          <Button onClick={onVerify2FA} loading={loading} className="mt-2 w-full bg-slate-900 hover:bg-slate-800" disabled={twoFactorCode.length !== 6}>
             Verify & Continue
           </Button>
         </div>
       )}
 
-      <p className="text-center text-sm text-text-secondary mt-8 pt-6 border-t border-border">
+      <p className="mt-8 border-t border-slate-200 pt-6 text-center text-sm text-slate-600">
         Don&apos;t have an account?{' '}
-        <Link href="/register" className="text-brand-amber hover:text-brand-gold font-semibold transition">
+        <Link href="/register" className="font-semibold text-emerald-700 transition hover:text-emerald-600">
           Create one now
         </Link>
       </p>
@@ -135,7 +146,7 @@ function LoginPageContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<Card><p className="text-sm text-text-muted">Loading...</p></Card>}>
+    <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading...</div>}>
       <LoginPageContent />
     </Suspense>
   );
