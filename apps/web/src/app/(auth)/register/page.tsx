@@ -17,9 +17,9 @@ const schema = z.object({
     .trim()
     .min(3, 'Username must be at least 3 characters')
     .max(30, 'Username must be 30 characters or less')
-    .regex(/^[a-zA-Z0-9_.-]+$/, 'Username can only contain letters, numbers, _, ., and -'),
-  phoneNumber: z.string().regex(/^\+?[1-9]\d{6,14}$/, 'Enter a valid phone number'),
-  identity: z.string().trim().min(2, 'Identity is required'),
+    .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,28}[a-zA-Z0-9])?$/, 'Username must start/end with a letter or number.'),
+  phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/, 'Use international format like +2348012345678'),
+  identity: z.string().trim().min(5, 'Use a valid government-issued ID value').max(50, 'Identity value is too long'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string().min(1, 'Confirm Password is required'),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -50,16 +50,17 @@ export default function RegisterPage() {
       });
 
       const userId = result.data?.data?.userId as string | undefined;
-      if (!userId) {
+      const onboardingToken = result.data?.data?.onboardingToken as string | undefined;
+      if (!userId || !onboardingToken) {
         setError('Registration failed. Please try again.');
         return;
       }
 
       if (typeof window !== 'undefined') {
-        sessionStorage.setItem('terms_user_id', userId);
+        sessionStorage.setItem('terms_onboarding_token', onboardingToken);
       }
 
-      router.push(`/terms?userId=${encodeURIComponent(userId)}`);
+      router.push(`/terms?token=${encodeURIComponent(onboardingToken)}`);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       const code = e?.response?.data?.error || '';
@@ -68,6 +69,7 @@ export default function RegisterPage() {
         USERNAME_EXISTS: 'This username is already registered. Choose a different one.',
         PHONE_EXISTS: 'This phone number is already registered.',
         INVALID_PHONE_NUMBER: 'Please enter a valid phone number.',
+        UNSUPPORTED_PHONE_COUNTRY: 'This phone number country is not yet supported.',
       };
       setError(messages[code] || 'Registration failed. Please check your details and try again.');
     } finally {
@@ -87,7 +89,7 @@ export default function RegisterPage() {
         <Input label="Email Address" type="email" {...register('email')} error={errors.email?.message} />
         <Input label="Username" {...register('username')} error={errors.username?.message} />
         <Input label="Phone Number" placeholder="+2348012345678" {...register('phoneNumber')} error={errors.phoneNumber?.message} />
-        <Input label="Identity Information" {...register('identity')} error={errors.identity?.message} />
+        <Input label="Identity Information" placeholder="National ID / Government ID" {...register('identity')} error={errors.identity?.message} />
         <Input label="Password" type="password" {...register('password')} error={errors.password?.message} />
         <Input label="Confirm Password" type="password" {...register('confirmPassword')} error={errors.confirmPassword?.message} />
         <Button type="submit" loading={loading} disabled={loading} className="w-full">Create Account</Button>

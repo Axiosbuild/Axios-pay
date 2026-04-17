@@ -10,15 +10,15 @@ const registerSchema: z.ZodType<RegisterInput> = z.object({
     .trim()
     .min(3)
     .max(30)
-    .regex(/^[a-zA-Z0-9_.-]+$/, 'Username can only contain letters, numbers, _, ., and -'),
-  phoneNumber: z.string().regex(/^\+?[1-9]\d{6,14}$/),
+    .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,28}[a-zA-Z0-9])?$/, 'Username must start/end with a letter or number.'),
+  phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/),
   identity: z.string().trim().min(2).max(120),
   password: z.string().min(8),
 });
 
 const acceptTermsSchema = z.object({
-  userId: z.string().min(1),
-  accepted: z.literal(true),
+  onboardingToken: z.string().min(1),
+  accepted: z.boolean(),
 });
 
 const loginSchema = z.object({
@@ -62,6 +62,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
       data: {
         userId: result.userId,
         requiresTermsAcceptance: result.requiresTermsAcceptance,
+        onboardingToken: result.onboardingToken,
       },
     });
   } catch (err) {
@@ -75,8 +76,8 @@ export async function register(req: Request, res: Response, next: NextFunction):
 
 export async function acceptTerms(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { userId } = acceptTermsSchema.parse(req.body);
-    await authService.acceptTerms(userId);
+    const { onboardingToken, accepted } = acceptTermsSchema.parse(req.body);
+    await authService.acceptTerms(onboardingToken, accepted);
     res.json({
       success: true,
       message: 'Terms and Conditions accepted successfully.',

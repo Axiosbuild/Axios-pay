@@ -12,21 +12,21 @@ function TermsPageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const userId = useMemo(() => {
-    const fromQuery = searchParams.get('userId');
+  const onboardingToken = useMemo(() => {
+    const fromQuery = searchParams.get('token');
     if (fromQuery) return fromQuery;
-    if (typeof window !== 'undefined') return sessionStorage.getItem('terms_user_id');
+    if (typeof window !== 'undefined') return sessionStorage.getItem('terms_onboarding_token');
     return null;
   }, [searchParams]);
 
   async function handleContinue() {
-    if (!userId || !accepted) return;
+    if (!onboardingToken || !accepted) return;
     setLoading(true);
     setError('');
     try {
-      await api.auth.acceptTerms({ userId, accepted: true });
+      await api.auth.acceptTerms({ onboardingToken, accepted: true });
       if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('terms_user_id');
+        sessionStorage.removeItem('terms_onboarding_token');
       }
       router.push('/login?message=Terms accepted. You can now sign in.');
     } catch {
@@ -40,7 +40,7 @@ function TermsPageContent() {
     <Card>
       <h2 className="font-display text-xl font-semibold text-text-primary mb-4">Terms and Conditions</h2>
 
-      <div className="space-y-3 text-sm text-text-secondary max-h-72 overflow-y-auto pr-1">
+      <div className="space-y-3 text-sm text-text-secondary max-h-72 overflow-y-auto pr-1" tabIndex={0} aria-label="Terms and Conditions content">
         <p>
           Welcome to Axios Pay. By continuing, you acknowledge that this is a regulated cross-border payment platform
           and that you are responsible for accurate identity information and lawful use of the service.
@@ -73,7 +73,7 @@ function TermsPageContent() {
       <Button
         className="w-full mt-5"
         onClick={handleContinue}
-        disabled={!accepted || !userId}
+        disabled={!accepted || !onboardingToken}
         loading={loading}
       >
         Continue

@@ -18,6 +18,7 @@ import * as twoFactorService from './twoFactor.service';
 
 const RESET_OTP_TTL = 900; // 15 minutes
 const REGISTER_IDEMPOTENCY_TTL_SECONDS = 60 * 10;
+const TERMS_ONBOARDING_TTL_SECONDS = 60 * 60 * 24;
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
@@ -40,6 +41,7 @@ export async function register(
   context?: RegisterContext
 ): Promise<{
   userId: string;
+  onboardingToken: string;
   message: string;
   requiresTermsAcceptance: true;
 }> {
@@ -51,6 +53,7 @@ export async function register(
       try {
         return JSON.parse(cachedResponse) as {
           userId: string;
+          onboardingToken: string;
           message: string;
           requiresTermsAcceptance: true;
         };
@@ -65,6 +68,7 @@ export async function register(
     const normalizedUsername = normalizeUsername(input.username);
     const normalizedPhoneNumber = normalizePhoneNumber(input.phoneNumber);
     const identity = input.identity.trim();
+    const { firstName, lastName } = deriveNameFromUsername(normalizedUsername);
     const passwordHash = await bcrypt.hash(input.password, 12);
 
     const user = await prisma.$transaction(
@@ -96,11 +100,10 @@ export async function register(
             username: normalizedUsername,
             phoneNumber: normalizedPhoneNumber,
             identity,
-            nationalIdNumber: identity,
             passwordHash,
-            firstName: normalizedUsername,
-            lastName: normalizedUsername,
-            nationality: 'NG',
+            firstName,
+            lastName,
+            nationality: deriveNationalityFromPhoneNumber(normalizedPhoneNumber),
             wallets: {
               create: [{ currency: 'NGN', balance: 0 }],
             },
@@ -117,8 +120,13 @@ export async function register(
       });
     });
 
+    // 48-char token provides high entropy while remaining URL-safe for onboarding redirects.
+    const onboardingToken = nanoid(48);
+    await redis.set(`terms:onboarding:${onboardingToken}`, user.id, "EX", TERMS_ONBOARDING_TTL_SECONDS);
+
     const response = {
       userId: user.id,
+      onboardingToken,
       message: 'Registration successful. Please review and accept the Terms and Conditions.',
       requiresTermsAcceptance: true as const,
     };
@@ -151,14 +159,14 @@ export async function register(
   }
 }
 
-export async function acceptTerms(userId: string): Promise<void> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true },
-  });
+export async function acceptTerms(onboardingToken: string, accepted: boolean): Promise<void> {
+  if (!accepted) {
+    throw new Error('TERMS_NOT_ACCEPTED');
+  }
 
-  if (!user) {
-    throw new Error('USER_NOT_FOUND');
+  const userId = await redis.get(`terms:onboarding:${onboardingToken}`);
+  if (!userId) {
+    throw new Error('TERMS_ACCEPTANCE_SESSION_INVALID');
   }
 
   await prisma.user.update({
@@ -168,6 +176,8 @@ export async function acceptTerms(userId: string): Promise<void> {
       termsAcceptedAt: new Date(),
     },
   });
+
+  await redis.del(`terms:onboarding:${onboardingToken}`);
 }
 
 export interface LoginInput {
@@ -371,10 +381,10 @@ function normalizeUsername(value: string): string {
 
 function normalizePhoneNumber(value: string): string {
   const compact = value.replace(/[\s()-]/g, '');
-  if (!/^\+?[1-9]\d{6,14}$/.test(compact)) {
+  if (!/^\+[1-9]\d{6,14}$/.test(compact)) {
     throw new Error('INVALID_PHONE_NUMBER');
   }
-  return compact.startsWith('+') ? compact : `+${compact}`;
+  return compact;
 }
 
 function tryNormalizePhoneNumber(value: string): string | null {
@@ -385,8 +395,32 @@ function tryNormalizePhoneNumber(value: string): string | null {
   }
 }
 
+
+function deriveNameFromUsername(username: string): { firstName: string; lastName: string } {
+  const segments = username.split(/[._-]+/).filter(Boolean);
+  const firstName = formatNameSegment(segments[0] || 'User');
+  const lastName = formatNameSegment(segments[1] || 'Member');
+  return { firstName, lastName };
+}
+
+function formatNameSegment(value: string): string {
+  const safeValue = value.replace(/[^a-zA-Z0-9]/g, '');
+  const normalized = safeValue || 'User';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+}
+
+function deriveNationalityFromPhoneNumber(phoneNumber: string): string {
+  if (phoneNumber.startsWith('+234')) return 'NG';
+  if (phoneNumber.startsWith('+256')) return 'UG';
+  if (phoneNumber.startsWith('+254')) return 'KE';
+  if (phoneNumber.startsWith('+233')) return 'GH';
+  if (phoneNumber.startsWith('+27')) return 'ZA';
+
+  throw new Error('UNSUPPORTED_PHONE_COUNTRY');
+}
+
 function mapRegisterErrorCode(error: unknown): string | null {
-  if (error instanceof Error && ['EMAIL_EXISTS', 'USERNAME_EXISTS', 'PHONE_EXISTS', 'INVALID_PHONE_NUMBER'].includes(error.message)) {
+  if (error instanceof Error && ['EMAIL_EXISTS', 'USERNAME_EXISTS', 'PHONE_EXISTS', 'INVALID_PHONE_NUMBER', 'UNSUPPORTED_PHONE_COUNTRY'].includes(error.message)) {
     return error.message;
   }
 
