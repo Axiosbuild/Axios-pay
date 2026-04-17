@@ -190,6 +190,36 @@ export async function acceptTerms(onboardingToken: string, accepted: boolean): P
   await redis.del(`terms:onboarding:${onboardingToken}`);
 }
 
+export interface KYCOnboardingInput {
+  onboardingToken: string;
+  nationality: string;
+  idNumber: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+}
+
+export async function submitKYCOnboarding(input: KYCOnboardingInput): Promise<void> {
+  const userId = await redis.get(`terms:onboarding:${input.onboardingToken}`);
+  if (!userId) {
+    throw new Error('KYC_SESSION_INVALID');
+  }
+
+  // Update user with KYC info
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
+      nationality: input.nationality.trim(),
+      identity: input.idNumber.trim(),
+    },
+  });
+
+  // Clear the onboarding token after KYC submission
+  await redis.del(`terms:onboarding:${input.onboardingToken}`);
+}
+
 export interface LoginInput {
   identifier: string; // username or phone number
   password: string;

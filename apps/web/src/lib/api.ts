@@ -144,6 +144,7 @@ export const api = {
   auth: {
     register: (data: unknown, config?: AxiosRequestConfig) => apiClient.post('/auth/register', data, config),
     acceptTerms: (data: unknown) => apiClient.post('/auth/accept-terms', data),
+    submitKYC: (data: unknown) => apiClient.post('/auth/submit-kyc', data),
     login: (data: unknown) => apiClient.post('/auth/login', data),
     refresh: (data: unknown) => apiClient.post('/auth/refresh', data),
     logout: (data: unknown) => apiClient.post('/auth/logout', data),

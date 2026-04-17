@@ -19,6 +19,7 @@ router.use((req, res, next) => {
 
 router.post('/register', authLimiter, authController.register);
 router.post('/accept-terms', authLimiter, authController.acceptTerms);
+router.post('/submit-kyc', authLimiter, authController.submitKYCOnboarding);
 router.post('/login', authLimiter, authController.login);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);

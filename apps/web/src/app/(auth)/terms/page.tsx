@@ -26,9 +26,9 @@ function TermsPageContent() {
     try {
       await api.auth.acceptTerms({ onboardingToken, accepted: true });
       if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('terms_onboarding_token');
+        sessionStorage.setItem('kyc_onboarding_token', onboardingToken);
       }
-      router.push('/login?message=Terms accepted. You can now sign in.');
+      router.push(`/kyc?token=${encodeURIComponent(onboardingToken)}`);
     } catch {
       setError('Unable to record acceptance. Please try again.');
     } finally {

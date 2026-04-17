@@ -13,7 +13,7 @@ const registerSchema: z.ZodType<RegisterInput> = z.object({
     .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,28}[a-zA-Z0-9])?$/, 'Username must start/end with a letter or number.')
     .optional(),
   phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/),
-  identity: z.string().trim().min(2).max(120),
+  identity: z.string().trim().min(2).max(120).optional(),
   password: z.string().min(8),
 });
 
@@ -46,9 +46,21 @@ const verify2FASchema = z.object({
   token: z.string().length(6),
 });
 
+const kycOnboardingSchema = z.object({
+  onboardingToken: z.string().min(1),
+  nationality: z.string().regex(/^[A-Z]{2}$/, 'Invalid country code'),
+  idNumber: z.string().min(1, 'ID number is required'),
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
+  dateOfBirth: z.string().min(1, 'Date of birth is required'),
+});
+
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const data = registerSchema.parse(req.body);
+    // Normalize request body to handle both old and new formats
+    const normalizedBody = normalizeRegisterPayload(req.body);
+    
+    const data = registerSchema.parse(normalizedBody);
     const requestIdHeader = req.headers['x-request-id'];
     const vercelIdHeader = req.headers['x-vercel-id'];
     const idempotencyHeader = req.headers['x-idempotency-key'];
@@ -82,6 +94,23 @@ export async function acceptTerms(req: Request, res: Response, next: NextFunctio
     res.json({
       success: true,
       message: 'Terms and Conditions accepted successfully.',
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function submitKYCOnboarding(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data = kycOnboardingSchema.parse(req.body);
+    await authService.submitKYCOnboarding(data);
+    res.json({
+      success: true,
+      message: 'Identity information collected successfully. You can now sign in.',
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -184,4 +213,26 @@ export async function verify2FALogin(req: Request, res: Response, next: NextFunc
     }
     next(err);
   }
+}
+
+/**
+ * Normalize register payload to handle both old format (countryCode + localPhone)
+ * and new format (phoneNumber). Also provides default for optional identity field.
+ */
+function normalizeRegisterPayload(body: unknown): unknown {
+  const payload = body as Record<string, unknown>;
+  
+  // Combine countryCode + localPhone into phoneNumber if using old format
+  if ((payload.countryCode || payload.localPhone) && !payload.phoneNumber) {
+    const countryCode = String(payload.countryCode || '+234').trim();
+    const localPhone = String(payload.localPhone || '').trim();
+    payload.phoneNumber = `${countryCode}${localPhone}`;
+  }
+  
+  // Provide sensible default for identity if not provided
+  if (!payload.identity) {
+    payload.identity = 'unverified';
+  }
+  
+  return payload;
 }
