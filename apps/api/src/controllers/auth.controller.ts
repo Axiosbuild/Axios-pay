@@ -10,7 +10,8 @@ const registerSchema: z.ZodType<RegisterInput> = z.object({
     .trim()
     .min(3)
     .max(30)
-    .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,28}[a-zA-Z0-9])?$/, 'Username must start/end with a letter or number.'),
+    .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,28}[a-zA-Z0-9])?$/, 'Username must start/end with a letter or number.')
+    .optional(),
   phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/),
   identity: z.string().trim().min(2).max(120),
   password: z.string().min(8),

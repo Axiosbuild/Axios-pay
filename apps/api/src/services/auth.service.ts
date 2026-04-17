@@ -24,7 +24,7 @@ const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist0000000
 
 export interface RegisterInput {
   email: string;
-  username: string;
+  username?: string;
   phoneNumber: string;
   identity: string;
   password: string;
@@ -65,7 +65,17 @@ export async function register(
 
   try {
     const normalizedEmail = input.email.trim().toLowerCase();
-    const normalizedUsername = normalizeUsername(input.username);
+    
+    // Auto-generate username if not provided
+    let usernameToUse = input.username?.trim();
+    if (!usernameToUse) {
+      // Extract name from email (part before @)
+      const emailPrefix = normalizedEmail.split('@')[0];
+      const timestamp = Date.now() % 10000; // 4-digit random suffix
+      usernameToUse = `${emailPrefix}_${timestamp}`;
+    }
+    
+    const normalizedUsername = normalizeUsername(usernameToUse);
     const normalizedPhoneNumber = normalizePhoneNumber(input.phoneNumber);
     const identity = input.identity.trim();
     const { firstName, lastName } = deriveNameFromUsername(normalizedUsername);
