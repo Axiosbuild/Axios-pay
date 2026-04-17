@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import * as authController from '../controllers/auth.controller';
 
 const router = Router();
-// Keep auth timeout comfortably above SMTP fast-fail budget (5s send timeout + retries/fallback).
+// Keep auth timeout above Resend API response budget (typically <2s, 15s gives headroom).
 const AUTH_ROUTE_TIMEOUT_MS = 15_000;
 
 const authLimiter = rateLimit({
@@ -66,7 +66,7 @@ router.post('/resend-otp', authLimiter, authController.resendOTP);
 router.post('/resend-verification', authLimiter, authController.resendVerification);
 router.post('/2fa/verify', authLimiter, authController.verify2FALogin);
 
-// New Nodemailer-backed verification endpoints
+// Resend-backed verification endpoints
 router.post('/send-verification', authLimiter, authController.sendVerification);
 router.post('/verify-code', authLimiter, authController.verifyCode);
 router.post('/verify-email-token', authLimiter, authController.verifyEmailToken);

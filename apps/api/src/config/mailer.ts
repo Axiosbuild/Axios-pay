@@ -1,4 +1,7 @@
+import { Resend } from 'resend';
 import { env } from './env';
+
+const resend = new Resend(env.RESEND_API_KEY);
 
 export interface ResendMailOptions {
   from: string;
@@ -9,33 +12,24 @@ export interface ResendMailOptions {
 }
 
 export async function sendResendEmail(options: ResendMailOptions): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY ?? env.RESEND_API_KEY;
+  const to = Array.isArray(options.to) ? options.to : [options.to];
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: options.from,
-      to: Array.isArray(options.to) ? options.to : [options.to],
-      subject: options.subject,
-      html: options.html,
-      ...(options.text ? { text: options.text } : {}),
-    }),
+  const { data, error } = await resend.emails.send({
+    from: options.from,
+    to,
+    subject: options.subject,
+    html: options.html,
+    ...(options.text ? { text: options.text } : {}),
   });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`[Resend] HTTP ${response.status}: ${body}`);
+  if (error) {
+    throw new Error(`[Resend] ${error.name}: ${error.message}`);
   }
 
-  const data = await response.json() as { id?: string };
-  console.log('[Resend] Email sent, id:', data.id);
+  console.log('[Resend] Email sent, id:', data?.id);
 }
 
-/** No-op kept for startup compatibility — SMTP verification is no longer needed. */
+/** No-op kept for startup compatibility — Resend SDK requires no connection verification. */
 export async function verifySmtpTransport(): Promise<void> {
-  console.log('[Resend] HTTP transport active — no SMTP verification required');
+  console.log('[Resend] SDK transport active — no connection verification required');
 }

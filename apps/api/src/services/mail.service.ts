@@ -19,9 +19,14 @@ export async function sendMail(input: SendMailInput): Promise<void> {
       html: input.html,
       text: input.text,
     });
-    console.log('[Resend] Sent to:', input.to);
+    console.log('[Resend] Email sent', { to: input.to, subject: input.subject });
   } catch (error) {
-    console.error('[Resend] Failed:', error);
+    console.error('[Resend] Failed to send email', {
+      to: input.to,
+      subject: input.subject,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw error;
   }
 }
