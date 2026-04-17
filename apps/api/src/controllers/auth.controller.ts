@@ -15,6 +15,9 @@ const registerSchema: z.ZodType<RegisterInput> = z.object({
   phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/),
   identity: z.string().trim().min(2).max(120).optional(),
   password: z.string().min(8),
+  country: z.string().regex(/^[A-Z]{2}$/),
+  nationality: z.string().min(2),
+  currency: z.string().regex(/^[A-Z]{3}$/),
 });
 
 const acceptTermsSchema = z.object({
@@ -224,7 +227,7 @@ function normalizeRegisterPayload(body: unknown): unknown {
   
   // Combine countryCode + localPhone into phoneNumber if using old format
   if ((payload.countryCode || payload.localPhone) && !payload.phoneNumber) {
-    const countryCode = String(payload.countryCode || '+234').trim();
+    const countryCode = String(payload.countryCode || '').trim();
     const localPhone = String(payload.localPhone || '').trim();
     payload.phoneNumber = `${countryCode}${localPhone}`;
   }

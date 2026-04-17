@@ -24,7 +24,9 @@ model User {
   dailyLimitResetAt          DateTime             @default(now())
   firstName                  String
   lastName                   String
+  country                    String               @default("NG")
   nationality                String
+  currency                   String               @default("NGN")
   kycStatus                  KycStatus            @default(PENDING)
   ninNumber                  String?
   nationalIdNumber           String?

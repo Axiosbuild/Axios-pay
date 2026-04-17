@@ -9,6 +9,9 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { useCountryDetect } from '@/hooks/useCountryDetect';
+import { CountrySelect } from '@/components/ui/CountrySelect';
+import { CountryConfig, getCountryByCode } from '@/lib/countries';
 
 const schema = z.object({
   email: z.string().email('Valid email required'),
@@ -18,7 +21,7 @@ const schema = z.object({
     .min(3, 'Username must be at least 3 characters')
     .max(30, 'Username must be 30 characters or less')
     .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,28}[a-zA-Z0-9])?$/, 'Username must start/end with a letter or number.'),
-  countryCode: z.string().regex(/^\+[1-9]\d{0,3}$/, 'Use country code format like +234'),
+  country: z.string().regex(/^[A-Z]{2}$/, 'Select a supported country'),
   localPhone: z.string().regex(/^\d{6,14}$/, 'Use digits only for local phone number'),
   identity: z.string().trim().min(5, 'Use a valid government-issued ID value').max(50, 'Identity value is too long'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -33,22 +36,28 @@ type FormData = z.infer<typeof schema>;
 export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryConfig | null>(null);
+  const { detected, loading: detectingCountry } = useCountryDetect();
   const router = useRouter();
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
+  const country = selectedCountry ?? getCountryByCode(detected.code);
 
   async function onStep2(data: FormData) {
     setLoading(true);
     setError('');
     try {
-      const phoneNumber = `${data.countryCode}${data.localPhone}`.replace(/\s/g, '');
+      const phoneNumber = `${country.phonePrefix}${data.localPhone}`.replace(/\s/g, '');
       const payload = {
         email: data.email,
         username: data.username,
         phoneNumber,
         identity: data.identity,
         password: data.password,
+        country: country.code,
+        nationality: country.name,
+        currency: country.currency,
       };
 
       console.log('[register] API payload:', payload);
@@ -94,9 +103,17 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit(onStep2)} className="space-y-4">
         <Input label="Email Address" type="email" {...register('email')} error={errors.email?.message} />
         <Input label="Username" {...register('username')} error={errors.username?.message} />
+        <input type="hidden" value={country.code} {...register('country')} />
+        <CountrySelect
+          label="Country"
+          value={country.code}
+          onChange={(value) => setSelectedCountry(value)}
+          disabled={detectingCountry}
+          error={errors.country?.message}
+        />
         <div className="grid grid-cols-3 gap-2">
           <div className="col-span-1">
-            <Input label="Code" placeholder="+234" {...register('countryCode')} error={errors.countryCode?.message} />
+            <Input label="Code" value={country.phonePrefix} readOnly />
           </div>
           <div className="col-span-2">
             <Input label="Phone Number" placeholder="7054321125" {...register('localPhone')} error={errors.localPhone?.message} />

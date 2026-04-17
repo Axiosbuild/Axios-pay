@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyWebhookSignature } from '../services/interswitch.service';
 import { completeDeposit } from '../services/wallet.service';
+import { prisma } from '../config/prisma';
+import { creditWallet } from '../services/walletService';
 
 export async function interswitchWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -26,8 +28,29 @@ export async function interswitchWebhook(req: Request, res: Response, next: Next
     };
     const normalizedStatus = (paymentStatus || status || '').toUpperCase();
 
-    if ((responseCode === '00' || normalizedStatus === 'PAID') && transactionReference) {
+    const isSuccess = responseCode === '00' || normalizedStatus === 'PAID';
+
+    if (isSuccess && transactionReference) {
       await completeDeposit(transactionReference);
+
+      const transaction = await prisma.transaction.findUnique({
+        where: { reference: transactionReference },
+      });
+
+      if (transaction && transaction.status === 'PENDING') {
+        await prisma.transaction.update({
+          where: { reference: transactionReference },
+          data: { status: 'COMPLETED' },
+        });
+        await creditWallet(
+          transaction.userId,
+          transaction.toCurrency as 'NGN' | 'KES' | 'UGX' | 'GHS' | 'ZAR',
+          Number(transaction.toAmount)
+        );
+        console.log(
+          `[Webhook] Wallet credited: ${transaction.userId} +${Number(transaction.toAmount)} ${transaction.toCurrency}`
+        );
+      }
     }
 
     res.status(200).json({ message: 'OK' });

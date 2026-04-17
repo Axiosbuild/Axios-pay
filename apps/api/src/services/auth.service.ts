@@ -28,7 +28,19 @@ export interface RegisterInput {
   phoneNumber: string;
   identity?: string;
   password: string;
+  country: string;
+  nationality: string;
+  currency: string;
 }
+
+const PILOT_COUNTRIES: Record<string, { nationality: string; currency: string }> = {
+  NG: { nationality: 'Nigeria', currency: 'NGN' },
+  KE: { nationality: 'Kenya', currency: 'KES' },
+  UG: { nationality: 'Uganda', currency: 'UGX' },
+  GH: { nationality: 'Ghana', currency: 'GHS' },
+  SA: { nationality: 'South Africa', currency: 'ZAR' },
+  ZA: { nationality: 'South Africa', currency: 'ZAR' },
+};
 
 interface RegisterContext {
   requestId?: string;
@@ -80,6 +92,19 @@ export async function register(
     const identity = (input.identity ?? '').trim();
     const { firstName, lastName } = deriveNameFromUsername(normalizedUsername);
     const passwordHash = await bcrypt.hash(input.password, 12);
+    const derivedCountry = deriveCountryFromPhoneNumber(normalizedPhoneNumber);
+    const requestedCountry = (input.country || derivedCountry).trim().toUpperCase();
+    const country = requestedCountry === 'ZA' ? 'SA' : requestedCountry;
+    const pilotConfig = PILOT_COUNTRIES[country];
+    if (!pilotConfig) {
+      throw new Error('COUNTRY_NOT_SUPPORTED');
+    }
+
+    const nationality = (input.nationality || pilotConfig.nationality).trim();
+    const currency = (input.currency || pilotConfig.currency).trim().toUpperCase();
+    if (currency !== pilotConfig.currency) {
+      throw new Error('INVALID_COUNTRY_CURRENCY');
+    }
 
     const user = await prisma.$transaction(
       async (tx) => {
@@ -113,9 +138,11 @@ export async function register(
             passwordHash,
             firstName,
             lastName,
-            nationality: deriveNationalityFromPhoneNumber(normalizedPhoneNumber),
+            country,
+            nationality,
+            currency,
             wallets: {
-              create: [{ currency: 'NGN', balance: 0 }],
+              create: [{ currency, balance: 0 }],
             },
           },
         });
@@ -458,17 +485,23 @@ function formatNameSegment(value: string): string {
 }
 
 function deriveNationalityFromPhoneNumber(phoneNumber: string): string {
+  return deriveCountryFromPhoneNumber(phoneNumber);
+
+  throw new Error('UNSUPPORTED_PHONE_COUNTRY');
+}
+
+function deriveCountryFromPhoneNumber(phoneNumber: string): string {
   if (phoneNumber.startsWith('+234')) return 'NG';
   if (phoneNumber.startsWith('+256')) return 'UG';
   if (phoneNumber.startsWith('+254')) return 'KE';
   if (phoneNumber.startsWith('+233')) return 'GH';
-  if (phoneNumber.startsWith('+27')) return 'ZA';
+  if (phoneNumber.startsWith('+27')) return 'SA';
 
   throw new Error('UNSUPPORTED_PHONE_COUNTRY');
 }
 
 function mapRegisterErrorCode(error: unknown): string | null {
-  if (error instanceof Error && ['EMAIL_EXISTS', 'USERNAME_EXISTS', 'PHONE_EXISTS', 'INVALID_PHONE_NUMBER', 'UNSUPPORTED_PHONE_COUNTRY'].includes(error.message)) {
+  if (error instanceof Error && ['EMAIL_EXISTS', 'USERNAME_EXISTS', 'PHONE_EXISTS', 'INVALID_PHONE_NUMBER', 'UNSUPPORTED_PHONE_COUNTRY', 'COUNTRY_NOT_SUPPORTED', 'INVALID_COUNTRY_CURRENCY'].includes(error.message)) {
     return error.message;
   }
 
