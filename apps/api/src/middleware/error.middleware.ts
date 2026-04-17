@@ -21,6 +21,9 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   INVALID_NETWORK: { status: 400, message: 'Invalid network selected' },
   INVALID_PHONE_NUMBER: { status: 400, message: 'Invalid phone number' },
   UNSUPPORTED_PHONE_COUNTRY: { status: 400, message: 'Phone number country is not supported' },
+  UNSUPPORTED_COUNTRY: { status: 400, message: 'This country is not supported for this operation' },
+  UNSUPPORTED_CURRENCY: { status: 400, message: 'This currency is not supported for this operation' },
+  COUNTRY_CURRENCY_MISMATCH: { status: 400, message: 'Country and currency do not match' },
   INVALID_PARAMETERS: { status: 400, message: 'Missing or invalid required fields' },
   RATE_LIMIT: { status: 429, message: 'Too many requests. Please try again shortly.' },
   INVALID_ACCOUNT_NUMBER: { status: 400, message: 'Invalid account number' },
@@ -48,6 +51,7 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   ID_ALREADY_VERIFIED: { status: 400, message: 'Your identity has already been verified.' },
   ID_VERIFICATION_ATTEMPTS_EXCEEDED: { status: 429, message: 'Too many verification attempts. Please try again tomorrow.' },
   VERIFICATION_SERVICE_UNAVAILABLE: { status: 503, message: 'Identity verification is temporarily unavailable. Please try again later.' },
+  KYC_REQUIRED: { status: 403, message: 'Complete KYC to use this transfer feature.' },
   OTP_PROVIDER_AUTH_FAILED: { status: 502, message: 'OTP provider authentication failed. Please contact support.' },
   OTP_PROVIDER_UNAVAILABLE: { status: 503, message: 'OTP service is temporarily unavailable. Please try again.' },
 };

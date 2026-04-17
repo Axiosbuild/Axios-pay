@@ -43,6 +43,7 @@ export default function FundWalletPage() {
           userId: user.id,
           amount: Number(amount),
           currency,
+          countryCode: selectedCountry.code,
         }),
       });
 

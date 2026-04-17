@@ -182,7 +182,8 @@ export const api = {
     createPaymentLink: (data: unknown) => apiClient.post('/wallets/payment-links', data),
     listPaymentLinks: () => apiClient.get('/wallets/payment-links'),
     deactivatePaymentLink: (id: string) => apiClient.delete(`/wallets/payment-links/${id}`),
-    getBanks: () => apiClient.get('/wallets/transfers/banks'),
+    getBanks: (params?: { countryCode?: string; currency?: string }) =>
+      apiClient.get('/wallets/transfers/banks', { params }),
     resolveBankAccount: (data: unknown) => apiClient.post('/wallets/transfers/resolve', data),
     sendTransfer: (data: TransferRequest, pinToken?: string) =>
       apiClient.post('/wallets/transfers/send', data, {
@@ -247,10 +248,13 @@ interface TransferRequest {
   accountName: string;
   amount: number;
   narration?: string;
+  countryCode?: string;
+  currency?: string;
 }
 
 interface InternalTransferRequest {
   recipientEmail: string;
   amount: number;
   narration?: string;
+  senderCurrency?: string;
 }

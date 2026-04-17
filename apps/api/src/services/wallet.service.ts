@@ -17,6 +17,148 @@ import { verifyPinToken } from './pin.service';
 import { sendDepositConfirmationEmail } from './email.service';
 
 const FEE_RATE = new Decimal('0.015'); // 1.5%
+const SUPPORTED_TRANSFER_CURRENCIES = ['NGN', 'UGX', 'KES', 'GHS', 'ZAR'] as const;
+const SUPPORTED_TRANSFER_COUNTRIES = ['NG', 'UG', 'KE', 'GH', 'SA'] as const;
+const COUNTRY_ALIASES: Record<string, (typeof SUPPORTED_TRANSFER_COUNTRIES)[number]> = {
+  ZA: 'SA',
+};
+
+const COUNTRY_TO_CURRENCY: Record<(typeof SUPPORTED_TRANSFER_COUNTRIES)[number], (typeof SUPPORTED_TRANSFER_CURRENCIES)[number]> = {
+  NG: 'NGN',
+  UG: 'UGX',
+  KE: 'KES',
+  GH: 'GHS',
+  SA: 'ZAR',
+};
+
+const CURRENCY_TO_COUNTRY: Record<(typeof SUPPORTED_TRANSFER_CURRENCIES)[number], (typeof SUPPORTED_TRANSFER_COUNTRIES)[number]> = {
+  NGN: 'NG',
+  UGX: 'UG',
+  KES: 'KE',
+  GHS: 'GH',
+  ZAR: 'SA',
+};
+
+const CURRENCY_DECIMAL_PLACES: Record<(typeof SUPPORTED_TRANSFER_CURRENCIES)[number], number> = {
+  NGN: 2,
+  UGX: 0,
+  KES: 2,
+  GHS: 2,
+  ZAR: 2,
+};
+
+function normalizeCountryCode(countryCode?: string): (typeof SUPPORTED_TRANSFER_COUNTRIES)[number] {
+  const normalizedRaw = (countryCode || '').trim().toUpperCase();
+  const normalized = COUNTRY_ALIASES[normalizedRaw] ?? normalizedRaw;
+  if (!SUPPORTED_TRANSFER_COUNTRIES.includes(normalized as (typeof SUPPORTED_TRANSFER_COUNTRIES)[number])) {
+    throw new Error('UNSUPPORTED_COUNTRY');
+  }
+  return normalized as (typeof SUPPORTED_TRANSFER_COUNTRIES)[number];
+}
+
+function normalizeTransferCurrency(currency?: string): (typeof SUPPORTED_TRANSFER_CURRENCIES)[number] {
+  const normalized = (currency || '').trim().toUpperCase();
+  if (!SUPPORTED_TRANSFER_CURRENCIES.includes(normalized as (typeof SUPPORTED_TRANSFER_CURRENCIES)[number])) {
+    throw new Error('UNSUPPORTED_CURRENCY');
+  }
+  return normalized as (typeof SUPPORTED_TRANSFER_CURRENCIES)[number];
+}
+
+function normalizeAccountNumber(accountNumber: string): string {
+  const normalized = accountNumber.replace(/\D/g, '');
+  if (normalized.length < 6 || normalized.length > 18) {
+    throw new Error('INVALID_ACCOUNT_NUMBER');
+  }
+  return normalized;
+}
+
+function resolveCountryAndCurrency(params: {
+  countryCode?: string;
+  currency?: string;
+  fallbackCountry?: string | null;
+  fallbackCurrency?: string | null;
+}): { countryCode: (typeof SUPPORTED_TRANSFER_COUNTRIES)[number]; currency: (typeof SUPPORTED_TRANSFER_CURRENCIES)[number] } {
+  const hasCountry = Boolean(params.countryCode?.trim());
+  const hasCurrency = Boolean(params.currency?.trim());
+
+  if (hasCountry && hasCurrency) {
+    const countryCode = normalizeCountryCode(params.countryCode);
+    const currency = normalizeTransferCurrency(params.currency);
+    if (COUNTRY_TO_CURRENCY[countryCode] !== currency) {
+      throw new Error('COUNTRY_CURRENCY_MISMATCH');
+    }
+    return { countryCode, currency };
+  }
+
+  if (hasCountry) {
+    const countryCode = normalizeCountryCode(params.countryCode);
+    return { countryCode, currency: COUNTRY_TO_CURRENCY[countryCode] };
+  }
+
+  if (hasCurrency) {
+    const currency = normalizeTransferCurrency(params.currency);
+    return { countryCode: CURRENCY_TO_COUNTRY[currency], currency };
+  }
+
+  if (params.fallbackCurrency?.trim()) {
+    const currency = normalizeTransferCurrency(params.fallbackCurrency);
+    return { countryCode: CURRENCY_TO_COUNTRY[currency], currency };
+  }
+
+  if (params.fallbackCountry?.trim()) {
+    const countryCode = normalizeCountryCode(params.fallbackCountry);
+    return { countryCode, currency: COUNTRY_TO_CURRENCY[countryCode] };
+  }
+
+  return { countryCode: 'NG', currency: 'NGN' };
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return '***';
+  if (local.length <= 2) return `***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+async function assertTransferCompliance(userId: string): Promise<{
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  country: string;
+  currency: string;
+}> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      country: true,
+      currency: true,
+      termsAccepted: true,
+      kycStatus: true,
+      isFrozen: true,
+    },
+  });
+
+  if (!user) throw new Error('USER_NOT_FOUND');
+  if (user.isFrozen) throw new Error('ACCOUNT_FROZEN');
+  if (!user.termsAccepted) throw new Error('TERMS_NOT_ACCEPTED');
+  if (!['SUBMITTED', 'APPROVED'].includes(user.kycStatus)) {
+    throw new Error('KYC_REQUIRED');
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    country: user.country,
+    currency: user.currency,
+  };
+}
 
 export async function getWallets(userId: string) {
   return prisma.wallet.findMany({
@@ -483,15 +625,20 @@ export async function deactivatePaymentLink(userId: string, id: string) {
   });
 }
 
-export async function listBanksCached() {
+export async function listBanksCached(params?: { countryCode?: string; currency?: string }) {
+  const resolved = resolveCountryAndCurrency({
+    countryCode: params?.countryCode,
+    currency: params?.currency,
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     return [
-      { code: '0001', name: 'Axios Mock Bank' },
-      { code: '0002', name: 'Sandbox Trust Bank' },
-      { code: '0003', name: 'Demo National Bank' },
+      { code: `${resolved.countryCode}001`, name: `${resolved.countryCode} Axios Mock Bank` },
+      { code: `${resolved.countryCode}002`, name: `${resolved.countryCode} Sandbox Trust Bank` },
+      { code: `${resolved.countryCode}003`, name: `${resolved.countryCode} Demo National Bank` },
     ];
   }
-  const cacheKey = 'interswitch:banks:v1';
+  const cacheKey = `interswitch:banks:v1:${resolved.countryCode}:${resolved.currency}`;
   try {
     const cached = await redis.get(cacheKey);
     if (cached) {
@@ -502,7 +649,10 @@ export async function listBanksCached() {
     // ignore cache read issues
   }
 
-  const banks = await getBankList();
+  const banks = await getBankList({
+    countryCode: resolved.countryCode,
+    currency: resolved.currency,
+  });
   try {
     await redis.set(cacheKey, JSON.stringify(banks), 'EX', 24 * 60 * 60);
   } catch {
@@ -511,12 +661,24 @@ export async function listBanksCached() {
   return banks;
 }
 
-export async function resolveBankAccount(bankCode: string, accountNumber: string) {
-  if (!/^\d{10}$/.test(accountNumber)) throw new Error('INVALID_ACCOUNT_NUMBER');
+export async function resolveBankAccount(
+  bankCode: string,
+  accountNumber: string,
+  params?: { countryCode?: string; currency?: string }
+) {
+  const normalizedAccountNumber = normalizeAccountNumber(accountNumber);
+  const resolved = resolveCountryAndCurrency({
+    countryCode: params?.countryCode,
+    currency: params?.currency,
+  });
+
   if (process.env.NODE_ENV !== 'production') {
-    return { accountName: `Mock User ${accountNumber.slice(-4)}` };
+    return { accountName: `${resolved.countryCode} Mock User ${normalizedAccountNumber.slice(-4)}` };
   }
-  return resolveAccount(bankCode, accountNumber);
+  return resolveAccount(bankCode, normalizedAccountNumber, {
+    countryCode: resolved.countryCode,
+    currency: resolved.currency,
+  });
 }
 
 export async function withdrawToBank(
@@ -528,26 +690,31 @@ export async function withdrawToBank(
     amount: number;
     narration?: string;
     pinToken?: string;
+    currency?: string;
+    countryCode?: string;
   }
 ) {
   const amount = new Decimal(params.amount);
   if (amount.lt(1000)) throw new Error('INVALID_AMOUNT');
   await verifyPinToken(userId, params.pinToken);
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { firstName: true, lastName: true },
+  const user = await assertTransferCompliance(userId);
+  const resolved = resolveCountryAndCurrency({
+    countryCode: params.countryCode,
+    currency: params.currency,
+    fallbackCountry: user.country,
+    fallbackCurrency: user.currency,
   });
-  if (!user) throw new Error('USER_NOT_FOUND');
+  const normalizedAccountNumber = normalizeAccountNumber(params.accountNumber);
 
-  const wallet = await getWalletByCurrency(userId, 'NGN');
+  const wallet = await getWalletByCurrency(userId, resolved.currency);
   if (!wallet || new Decimal(wallet.balance.toString()).lt(amount)) {
     throw new Error('INSUFFICIENT_BALANCE');
   }
 
   const txRef = `AXP-WDR-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   await prisma.wallet.update({
-    where: { userId_currency: { userId, currency: 'NGN' } },
+    where: { userId_currency: { userId, currency: resolved.currency } },
     data: { balance: { decrement: amount.toNumber() } },
   });
 
@@ -556,8 +723,8 @@ export async function withdrawToBank(
       userId,
       type: 'WITHDRAWAL',
       status: 'PROCESSING',
-      fromCurrency: 'NGN',
-      toCurrency: 'NGN',
+      fromCurrency: resolved.currency,
+      toCurrency: resolved.currency,
       fromAmount: amount,
       toAmount: amount,
       exchangeRate: new Decimal(1),
@@ -565,8 +732,9 @@ export async function withdrawToBank(
       reference: txRef,
       narration: params.narration || 'Wallet withdrawal',
       metadata: {
+        countryCode: resolved.countryCode,
         bankCode: params.bankCode,
-        accountNumber: params.accountNumber,
+        accountNumber: normalizedAccountNumber,
         accountName: params.accountName,
       },
     },
@@ -582,7 +750,7 @@ export async function withdrawToBank(
         data: {
           userId,
           type: 'WITHDRAWAL',
-          message: `Mock withdrawal of ₦${amount.toFixed(2)} completed`,
+          message: `Mock withdrawal of ${resolved.currency} ${amount.toFixed(CURRENCY_DECIMAL_PLACES[resolved.currency])} completed`,
           metadata: { reference: txRef, mock: true },
         },
       });
@@ -590,11 +758,13 @@ export async function withdrawToBank(
     }
     const transfer = await sendMoney(userId, {
       beneficiaryBankCode: params.bankCode,
-      beneficiaryAccountNumber: params.accountNumber,
+      beneficiaryAccountNumber: normalizedAccountNumber,
       beneficiaryAccountName: params.accountName,
       amount: amount.toNumber(),
       narration: params.narration,
       senderName: `${user.firstName} ${user.lastName}`,
+      senderCurrency: resolved.currency,
+      countryCode: resolved.countryCode,
     });
 
     await prisma.transaction.update({
@@ -604,14 +774,14 @@ export async function withdrawToBank(
 
     if (transfer.status !== 'SUCCESS') {
       await prisma.wallet.update({
-        where: { userId_currency: { userId, currency: 'NGN' } },
+        where: { userId_currency: { userId, currency: resolved.currency } },
         data: { balance: { increment: amount.toNumber() } },
       });
       await prisma.notification.create({
         data: {
           userId,
           type: 'WITHDRAWAL',
-          message: `Withdrawal of ₦${amount.toFixed(2)} failed and was refunded`,
+          message: `Withdrawal of ${resolved.currency} ${amount.toFixed(CURRENCY_DECIMAL_PLACES[resolved.currency])} failed and was refunded`,
           metadata: { reference: txRef },
         },
       });
@@ -622,7 +792,7 @@ export async function withdrawToBank(
       data: {
         userId,
         type: 'WITHDRAWAL',
-        message: `Withdrawal of ₦${amount.toFixed(2)} completed`,
+        message: `Withdrawal of ${resolved.currency} ${amount.toFixed(CURRENCY_DECIMAL_PLACES[resolved.currency])} completed`,
         metadata: { reference: txRef },
       },
     });
@@ -630,7 +800,7 @@ export async function withdrawToBank(
     return { status: 'SUCCESS', reference: txRef };
   } catch (error) {
     await prisma.wallet.update({
-      where: { userId_currency: { userId, currency: 'NGN' } },
+      where: { userId_currency: { userId, currency: resolved.currency } },
       data: { balance: { increment: amount.toNumber() } },
     });
     await prisma.transaction.update({
@@ -646,59 +816,108 @@ export async function transferToAxiosUser(
   recipientEmail: string,
   amountValue: number,
   narration?: string,
-  pinToken?: string
+  pinToken?: string,
+  senderCurrency?: string
 ) {
   const amount = new Decimal(amountValue);
   if (amount.lte(0)) throw new Error('INVALID_AMOUNT');
   await verifyPinToken(userId, pinToken);
-  const senderWallet = await getWalletByCurrency(userId, 'NGN');
+  const sender = await assertTransferCompliance(userId);
+  const normalizedRecipientEmail = recipientEmail.trim().toLowerCase();
+  const currency = senderCurrency
+    ? normalizeTransferCurrency(senderCurrency)
+    : normalizeTransferCurrency(sender.currency);
+  const senderWallet = await getWalletByCurrency(userId, currency);
   if (!senderWallet || new Decimal(senderWallet.balance.toString()).lt(amount)) {
     throw new Error('INSUFFICIENT_BALANCE');
   }
   const recipient = await prisma.user.findUnique({
-    where: { email: recipientEmail.toLowerCase() },
-    select: { id: true },
+    where: { email: normalizedRecipientEmail },
+    select: { id: true, email: true, currency: true, termsAccepted: true, kycStatus: true, isFrozen: true },
   });
   if (!recipient) throw new Error('USER_NOT_FOUND');
+  if (recipient.isFrozen) throw new Error('ACCOUNT_FROZEN');
+  if (!recipient.termsAccepted) throw new Error('TERMS_NOT_ACCEPTED');
+  if (!['SUBMITTED', 'APPROVED'].includes(recipient.kycStatus)) {
+    throw new Error('KYC_REQUIRED');
+  }
+  if (recipient.id === userId) throw new Error('INVALID_PARAMETERS');
+
+  const recipientCurrency = normalizeTransferCurrency(recipient.currency);
+  const exchangeRate =
+    currency === recipientCurrency ? new Decimal(1) : await getRate(currency, recipientCurrency);
+  const recipientAmount = amount
+    .mul(exchangeRate)
+    .toDecimalPlaces(CURRENCY_DECIMAL_PLACES[recipientCurrency], Decimal.ROUND_DOWN);
 
   const reference = `AXP-INT-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   await prisma.$transaction(async (db: Prisma.TransactionClient) => {
     await db.wallet.update({
-      where: { userId_currency: { userId, currency: 'NGN' } },
+      where: { userId_currency: { userId, currency } },
       data: { balance: { decrement: amount.toNumber() } },
     });
     await db.wallet.upsert({
-      where: { userId_currency: { userId: recipient.id, currency: 'NGN' } },
-      create: { userId: recipient.id, currency: 'NGN', balance: amount.toNumber() },
-      update: { balance: { increment: amount.toNumber() } },
+      where: { userId_currency: { userId: recipient.id, currency: recipientCurrency } },
+      create: { userId: recipient.id, currency: recipientCurrency, balance: recipientAmount.toNumber() },
+      update: { balance: { increment: recipientAmount.toNumber() } },
     });
     await db.transaction.create({
       data: {
         userId,
         type: 'WITHDRAWAL',
         status: 'COMPLETED',
-        fromCurrency: 'NGN',
-        toCurrency: 'NGN',
+        fromCurrency: currency,
+        toCurrency: recipientCurrency,
         fromAmount: amount,
-        toAmount: amount,
-        exchangeRate: new Decimal(1),
+        toAmount: recipientAmount,
+        exchangeRate,
         fee: new Decimal(0),
         reference,
-        narration: narration || `Transfer to Axios Pay user ${recipientEmail}`,
-        metadata: { recipientEmail, internalTransfer: true, mock: process.env.NODE_ENV !== 'production' },
+        narration: narration || `Transfer to Axios Pay user ${maskEmail(recipient.email)}`,
+        metadata: {
+          recipientUserId: recipient.id,
+          recipientEmailMasked: maskEmail(recipient.email),
+          internalTransfer: true,
+          mock: process.env.NODE_ENV !== 'production',
+        },
       },
     });
     await db.notification.create({
       data: {
         userId,
         type: 'WITHDRAWAL',
-        message: `Transfer of ₦${amount.toFixed(2)} to ${recipientEmail} completed`,
+        message: `Transfer of ${currency} ${amount.toFixed(CURRENCY_DECIMAL_PLACES[currency])} to ${maskEmail(recipient.email)} completed`,
         metadata: { reference, internalTransfer: true },
+      },
+    });
+    await db.notification.create({
+      data: {
+        userId: recipient.id,
+        type: 'DEPOSIT',
+        message: `You received ${recipientCurrency} ${recipientAmount.toFixed(CURRENCY_DECIMAL_PLACES[recipientCurrency])} from ${maskEmail(sender.email)}`,
+        metadata: {
+          reference,
+          internalTransfer: true,
+          senderUserId: sender.id,
+          senderEmailMasked: maskEmail(sender.email),
+          senderCurrency: currency,
+          recipientCurrency,
+          exchangeRate: exchangeRate.toString(),
+        },
       },
     });
   });
 
-  return { status: 'SUCCESS', reference, mock: process.env.NODE_ENV !== 'production' };
+  return {
+    status: 'SUCCESS',
+    reference,
+    senderCurrency: currency,
+    recipientCurrency,
+    senderAmount: amount.toString(),
+    recipientAmount: recipientAmount.toString(),
+    exchangeRate: exchangeRate.toString(),
+    mock: process.env.NODE_ENV !== 'production',
+  };
 }
 
 export async function generatePaycode(userId: string, amountValue: number) {

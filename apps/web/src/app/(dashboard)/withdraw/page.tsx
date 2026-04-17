@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api';
 import { PINVerifyModal } from '@/components/PINVerifyModal';
+import { PILOT_COUNTRIES } from '@/lib/countries';
+import { useAuthStore } from '@/store/authStore';
 
 interface Bank {
   code: string;
@@ -19,10 +21,12 @@ interface Wallet {
 }
 
 export default function WithdrawPage() {
+  const { user } = useAuthStore();
   const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [amount, setAmount] = useState('1000');
+  const [currency, setCurrency] = useState('NGN');
   const [narration, setNarration] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [mode, setMode] = useState<'bank' | 'axios'>('bank');
@@ -33,8 +37,12 @@ export default function WithdrawPage() {
   const [pinToken, setPinToken] = useState<string | null>(null);
 
   const { data: banks } = useQuery({
-    queryKey: ['banks'],
-    queryFn: () => api.wallets.getBanks().then((r) => r.data as Bank[]),
+    queryKey: ['banks', currency],
+    queryFn: () =>
+      api.wallets
+        .getBanks({ currency, countryCode: selectedCountry.code })
+        .then((r) => r.data as Bank[]),
+    enabled: Boolean(currency),
   });
 
   const { data: wallets } = useQuery({
@@ -42,18 +50,44 @@ export default function WithdrawPage() {
     queryFn: () => api.wallets.getAll().then((r) => r.data as Wallet[]),
   });
 
-  const ngnBalance = useMemo(() => {
-    const wallet = (wallets || []).find((w) => w.currency === 'NGN');
-    return wallet ? Number(wallet.balance) : 0;
+  const walletCurrencies = useMemo(() => {
+    const unique = Array.from(new Set((wallets || []).map((w) => w.currency)));
+    return unique.filter((curr) => PILOT_COUNTRIES.some((country) => country.currency === curr));
   }, [wallets]);
 
+  const selectedCountry = useMemo(() => {
+    return PILOT_COUNTRIES.find((country) => country.currency === currency) ?? PILOT_COUNTRIES[0];
+  }, [currency]);
+
   useEffect(() => {
-    if (accountNumber.length !== 10 || !bankCode) return;
+    if (!walletCurrencies.length) return;
+    if (walletCurrencies.includes(currency)) return;
+
+    if (user?.currency && walletCurrencies.includes(user.currency)) {
+      setCurrency(user.currency);
+      return;
+    }
+
+    setCurrency(walletCurrencies[0]);
+  }, [walletCurrencies, currency, user?.currency]);
+
+  const selectedBalance = useMemo(() => {
+    const wallet = (wallets || []).find((w) => w.currency === currency);
+    return wallet ? Number(wallet.balance) : 0;
+  }, [wallets, currency]);
+
+  useEffect(() => {
+    if (accountNumber.length < 6 || !bankCode || mode !== 'bank') return;
     api.wallets
-      .resolveBankAccount({ bankCode, accountNumber })
+      .resolveBankAccount({
+        bankCode,
+        accountNumber,
+        currency,
+        countryCode: selectedCountry.code,
+      })
       .then((r) => setAccountName(r.data?.accountName || ''))
       .catch(() => setAccountName(''));
-  }, [accountNumber, bankCode]);
+  }, [accountNumber, bankCode, currency, selectedCountry.code, mode]);
 
   useEffect(() => {
     if (!pinToken || !pending) return;
@@ -68,6 +102,8 @@ export default function WithdrawPage() {
               accountName,
               amount: Number(amount),
               narration: narration || undefined,
+              currency,
+              countryCode: selectedCountry.code,
             },
             pinToken
           )
@@ -76,11 +112,22 @@ export default function WithdrawPage() {
               recipientEmail,
               amount: Number(amount),
               narration: narration || undefined,
+              senderCurrency: currency,
             },
             pinToken
           );
     request
-      .then((r) => setMessage(r.data?.status === 'SUCCESS' ? 'Withdrawal successful' : 'Withdrawal failed'))
+      .then((r) =>
+        setMessage(
+          r.data?.status === 'SUCCESS'
+            ? mode === 'bank'
+              ? `Withdrawal successful (${currency})`
+              : `Transfer successful (${currency})`
+            : mode === 'bank'
+              ? 'Withdrawal failed'
+              : 'Transfer failed'
+        )
+      )
       .catch((err: unknown) => {
         const e = err as { response?: { data?: { message?: string } }; message?: string };
         setMessage(e?.response?.data?.message || e?.message || 'Withdrawal failed.');
@@ -90,7 +137,7 @@ export default function WithdrawPage() {
         setPending(false);
         setPinToken(null);
       });
-  }, [pinToken, pending, bankCode, accountNumber, accountName, amount, narration]);
+  }, [pinToken, pending, bankCode, accountNumber, accountName, amount, narration, mode, recipientEmail, currency, selectedCountry.code]);
 
   function requestWithdraw() {
     setPending(true);
@@ -105,7 +152,26 @@ export default function WithdrawPage() {
           <button type="button" onClick={() => setMode('bank')} className={`px-3 py-2 rounded-btn text-sm ${mode === 'bank' ? 'bg-brand-amber text-white' : 'bg-subtle text-text-secondary'}`}>Bank Transfer</button>
           <button type="button" onClick={() => setMode('axios')} className={`px-3 py-2 rounded-btn text-sm ${mode === 'axios' ? 'bg-brand-amber text-white' : 'bg-subtle text-text-secondary'}`}>Axios Pay User</button>
         </div>
-        <p className="text-sm text-text-secondary">Available NGN balance: ₦{ngnBalance.toFixed(2)}</p>
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-text-primary">Currency</label>
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
+          >
+            {walletCurrencies.map((walletCurrency) => {
+              const country = PILOT_COUNTRIES.find((entry) => entry.currency === walletCurrency);
+              return (
+                <option key={walletCurrency} value={walletCurrency}>
+                  {country?.flag || '🌍'} {walletCurrency} - {country?.name || 'Wallet'}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+        <p className="text-sm text-text-secondary">
+          Available {currency} balance: {selectedBalance.toFixed(currency === 'UGX' ? 0 : 2)}
+        </p>
         {mode === 'bank' ? (
           <>
             <div className="space-y-1">
@@ -125,13 +191,13 @@ export default function WithdrawPage() {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-text-primary">Account Number</label>
-              <input
-                value={accountNumber}
-                onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                className="w-full px-3 py-2.5 rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
-                placeholder="0123456789"
-              />
-            </div>
+                <input
+                  value={accountNumber}
+                  onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 18))}
+                  className="w-full px-3 py-2.5 rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
+                  placeholder="Enter account number"
+                />
+              </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-text-primary">Account Name</label>
               <input
@@ -175,11 +241,11 @@ export default function WithdrawPage() {
         <Button
           onClick={requestWithdraw}
           loading={loading}
-          disabled={
-            mode === 'bank'
-              ? (!bankCode || accountNumber.length !== 10 || !accountName || Number(amount) < 1000)
+            disabled={
+              mode === 'bank'
+              ? (!bankCode || accountNumber.length < 6 || !accountName || Number(amount) < 1000)
               : (!recipientEmail || Number(amount) < 100)
-          }
+            }
           className="w-full"
         >
           {mode === 'bank' ? 'Withdraw to Bank' : 'Transfer to Axios Pay User'}

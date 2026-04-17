@@ -26,8 +26,8 @@ export function useRates() {
   const query = useQuery({
     queryKey: ['rates'],
     queryFn: () => api.rates.getAll().then((response) => response.data as RatesResponse),
-    refetchInterval: 30_000,
-    staleTime: 30_000,
+    refetchInterval: 60_000,
+    staleTime: 60_000,
   });
 
   const rates = query.data?.rates ?? [];
