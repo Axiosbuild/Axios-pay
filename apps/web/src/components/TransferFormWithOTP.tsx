@@ -345,7 +345,7 @@ export function TransferFormWithOTP({ onSuccess, onError }: TransferFormWithOTPP
             </Button>
             <Button
               onClick={handleResendOTP}
-              variant="outline"
+              variant="secondary"
               disabled={isLoading || timeLeft > 30}
               loading={isLoading}
               className="flex-1"
