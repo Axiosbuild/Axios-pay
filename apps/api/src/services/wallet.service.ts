@@ -34,7 +34,8 @@ export async function getWalletByCurrency(userId: string, currency: string) {
 export async function fundWallet(
   userId: string,
   amount: number,
-  userEmail: string
+  userEmail: string,
+  transactionReference?: string
 ): Promise<{ paymentUrl: string; reference: string }> {
   const decimalAmount = new Decimal(amount);
   if (decimalAmount.lt(100)) throw new Error('INVALID_AMOUNT');
@@ -43,6 +44,7 @@ export async function fundWallet(
     amount,
     userId,
     userEmail,
+    transactionReference,
   });
 
   await prisma.transaction.create({

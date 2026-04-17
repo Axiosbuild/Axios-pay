@@ -11,6 +11,7 @@ import paymentLinksRoutes from './payment-links.routes';
 import transfersRoutes from './transfers.routes';
 import paycodesRoutes from './paycodes.routes';
 import kycRoutes from './kyc.routes';
+import otpRoutes from './otp.routes';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/payment-links', paymentLinksRoutes);
 router.use('/transfers', transfersRoutes);
 router.use('/paycodes', paycodesRoutes);
 router.use('/kyc', kycRoutes);
+router.use('/otp', otpRoutes);
 
 export default router;
