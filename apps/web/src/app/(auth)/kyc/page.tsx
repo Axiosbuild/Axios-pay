@@ -4,7 +4,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 
 const NATIONALITIES: Record<string, string> = {
   NG: 'Nigeria',

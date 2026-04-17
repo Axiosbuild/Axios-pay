@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Image from 'next/image';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -45,7 +46,14 @@ export default function TwoFactorPage() {
         )}
         {setupData && (
           <div className="mt-4 space-y-3">
-            <img src={setupData.qrCodeDataUrl} alt="2FA QR Code" className="w-56 h-56 border border-border rounded-btn" />
+            <Image
+              src={setupData.qrCodeDataUrl}
+              alt="2FA QR Code"
+              width={224}
+              height={224}
+              unoptimized
+              className="w-56 h-56 border border-border rounded-btn"
+            />
             <p className="text-sm text-text-secondary break-all">Secret: {setupData.secret}</p>
             <Input label="Authenticator code" value={token} onChange={(e) => setToken(e.target.value)} />
             <Button onClick={handleEnable} disabled={token.length !== 6}>Confirm & Enable</Button>

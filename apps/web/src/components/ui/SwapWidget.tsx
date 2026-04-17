@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeftRight } from 'lucide-react';
 import Decimal from 'decimal.js';
 import { api } from '@/lib/api';
@@ -27,6 +27,7 @@ export function SwapWidget({ onSwap, compact, mobileStickyAction = false }: Swap
   const [swapping, setSwapping] = useState(false);
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [pendingSwap, setPendingSwap] = useState(false);
+  const previousRateRef = useRef<string | null>(null);
 
   const fee = fromAmount ? new Decimal(fromAmount || 0).mul('0.015').toFixed(2) : '0.00';
   const net = fromAmount ? new Decimal(fromAmount || 0).minus(fee).toFixed(2) : '0.00';
@@ -39,8 +40,8 @@ export function SwapWidget({ onSwap, compact, mobileStickyAction = false }: Swap
       .then((r) => {
         const nextRate = r.data.rate as string;
         const nextMid = r.data.midMarketRate as string;
-        if (rate) {
-          const oldRate = new Decimal(rate);
+        if (previousRateRef.current) {
+          const oldRate = new Decimal(previousRateRef.current);
           const newRate = new Decimal(nextRate);
           const diff = oldRate.eq(0) ? new Decimal(0) : newRate.minus(oldRate).abs().div(oldRate);
           if (diff.gt(0.01)) {
@@ -49,6 +50,7 @@ export function SwapWidget({ onSwap, compact, mobileStickyAction = false }: Swap
           }
         }
         setRate(nextRate);
+        previousRateRef.current = nextRate;
         setMidMarketRate(nextMid);
         setRateCountdown(60);
       })

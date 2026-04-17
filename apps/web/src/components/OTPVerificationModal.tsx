@@ -6,6 +6,15 @@ import { OTPInput } from './ui/OTPInput';
 import { Button } from './ui/Button';
 import { verifyPaymentOTP } from '@/services/paymentService';
 
+type OTPErrorShape = {
+  response?: {
+    data?: {
+      error?: string;
+      remaining?: number;
+    };
+  };
+};
+
 interface OTPVerificationModalProps {
   isOpen: boolean;
   sessionToken: string;
@@ -64,9 +73,10 @@ export function OTPVerificationModal({
       if (response.verified) {
         onVerified(response.transferToken);
       }
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error || 'Verification failed';
-      const remaining = err.response?.data?.remaining;
+    } catch (err: unknown) {
+      const typedErr = err as OTPErrorShape;
+      const errorMsg = typedErr.response?.data?.error || 'Verification failed';
+      const remaining = typedErr.response?.data?.remaining;
 
       setError(errorMsg);
       if (remaining !== undefined) {
@@ -99,7 +109,7 @@ export function OTPVerificationModal({
         </div>
 
         <p className="text-text-secondary mb-6">
-          We've sent a 6-digit code to your registered phone number. Enter it below to continue.
+          We&apos;ve sent a 6-digit code to your registered phone number. Enter it below to continue.
         </p>
 
         <div className="mb-6">
@@ -137,7 +147,7 @@ export function OTPVerificationModal({
         </Button>
 
         <p className="text-xs text-text-muted text-center mt-4">
-          Didn't receive the code? It may take up to 30 seconds. Check your spam folder.
+          Didn&apos;t receive the code? It may take up to 30 seconds. Check your spam folder.
         </p>
       </div>
     </div>

@@ -30,7 +30,7 @@ export function useRates() {
     staleTime: 60_000,
   });
 
-  const rates = query.data?.rates ?? [];
+  const rates = useMemo(() => query.data?.rates ?? [], [query.data?.rates]);
   const lastUpdated = query.data?.fetchedAt ?? null;
 
   const isStale = useMemo(() => {

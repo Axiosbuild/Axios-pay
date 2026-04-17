@@ -29,6 +29,15 @@ interface TransferFormWithOTPProps {
 
 type Step = 'amount' | 'otp' | 'processing';
 
+type TransferApiError = {
+  response?: {
+    data?: {
+      error?: string;
+      remaining?: number;
+    };
+  };
+};
+
 function generateTransactionReference(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -109,8 +118,9 @@ export function TransferFormWithOTP({ onSuccess, onError }: TransferFormWithOTPP
           return prev - 1;
         });
       }, 1000);
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error || 'Failed to request OTP';
+    } catch (err: unknown) {
+      const typedErr = err as TransferApiError;
+      const errorMsg = typedErr.response?.data?.error || 'Failed to request OTP';
       setError(errorMsg);
       onError?.(errorMsg);
     } finally {
@@ -139,9 +149,10 @@ export function TransferFormWithOTP({ onSuccess, onError }: TransferFormWithOTPP
         setStep('processing');
         await handleInitiatePayment(response.transferToken);
       }
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error || 'OTP verification failed';
-      const remaining = err.response?.data?.remaining;
+    } catch (err: unknown) {
+      const typedErr = err as TransferApiError;
+      const errorMsg = typedErr.response?.data?.error || 'OTP verification failed';
+      const remaining = typedErr.response?.data?.remaining;
 
       setError(errorMsg);
       if (remaining !== undefined) {
@@ -167,8 +178,9 @@ export function TransferFormWithOTP({ onSuccess, onError }: TransferFormWithOTPP
       setStep('amount');
       setOtp('');
       setOtpState({ sessionToken: '', transactionReference: '', amount: 0, expiresInSeconds: 0 });
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error || 'Payment initiation failed';
+    } catch (err: unknown) {
+      const typedErr = err as TransferApiError;
+      const errorMsg = typedErr.response?.data?.error || 'Payment initiation failed';
       setError(errorMsg);
       onError?.(errorMsg);
       setStep('otp');
@@ -209,8 +221,9 @@ export function TransferFormWithOTP({ onSuccess, onError }: TransferFormWithOTPP
           return prev - 1;
         });
       }, 1000);
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error || 'Failed to resend OTP';
+    } catch (err: unknown) {
+      const typedErr = err as TransferApiError;
+      const errorMsg = typedErr.response?.data?.error || 'Failed to resend OTP';
       setError(errorMsg);
       onError?.(errorMsg);
     } finally {
@@ -298,7 +311,7 @@ export function TransferFormWithOTP({ onSuccess, onError }: TransferFormWithOTPP
         <div className="space-y-4">
           <div className="bg-blue-500/10 border border-blue-500/20 rounded-btn p-4">
             <p className="text-sm text-blue-600">
-              We've sent a 6-digit code to <strong>{user?.phoneNumber}</strong>
+              We&apos;ve sent a 6-digit code to <strong>{user?.phoneNumber}</strong>
             </p>
           </div>
 
