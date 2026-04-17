@@ -11,7 +11,8 @@
     "build": "turbo run build",
     "type-check": "turbo run type-check",
     "lint": "turbo run lint",
-    "start": "npm run start --workspace @axiospay/api"
+    "start": "npm run start --workspace @axiospay/api",
+    "deploy": "npm run deploy --workspace @axiospay/api"
   },
   "devDependencies": {
     "turbo": "^1.13.4",
