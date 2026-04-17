@@ -1,25 +1,41 @@
-import nodemailer from 'nodemailer';
 import { env } from './env';
 
-export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST ?? env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT ?? env.SMTP_PORT),
-  secure: env.SMTP_SECURE,
-  pool: true,
-  maxConnections: 5,
-  connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
-  socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
-  auth: {
-    user: process.env.SMTP_USER ?? env.SMTP_USER,
-    pass: process.env.SMTP_PASS ?? env.SMTP_PASS,
-  },
-});
+export interface ResendMailOptions {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html: string;
+  text?: string;
+}
 
-export async function verifySmtpTransport(): Promise<void> {
-  try {
-    await transporter.verify();
-    console.log('[SMTP] Connection verified');
-  } catch (error) {
-    console.error('[SMTP] Failed:', error);
+export async function sendResendEmail(options: ResendMailOptions): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY ?? env.RESEND_API_KEY;
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: options.from,
+      to: Array.isArray(options.to) ? options.to : [options.to],
+      subject: options.subject,
+      html: options.html,
+      ...(options.text ? { text: options.text } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`[Resend] HTTP ${response.status}: ${body}`);
   }
+
+  const data = await response.json() as { id?: string };
+  console.log('[Resend] Email sent, id:', data.id);
+}
+
+/** No-op kept for startup compatibility — SMTP verification is no longer needed. */
+export async function verifySmtpTransport(): Promise<void> {
+  console.log('[Resend] HTTP transport active — no SMTP verification required');
 }
