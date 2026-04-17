@@ -9,6 +9,7 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   INVALID_CREDENTIALS: { status: 401, message: 'Invalid username/phone number or password' },
   TERMS_NOT_ACCEPTED: { status: 403, message: 'You must accept the Terms and Conditions before continuing.' },
   TERMS_ACCEPTANCE_SESSION_INVALID: { status: 401, message: 'Your terms acceptance session is invalid or expired. Please sign up again.' },
+  KYC_SESSION_INVALID: { status: 401, message: 'Your KYC session is invalid or expired. Please sign up again.' },
   OTP_EXPIRED: { status: 400, message: 'The verification code has expired. Please request a new one.' },
   OTP_INVALID: { status: 400, message: 'Invalid verification code' },
   SESSION_NOT_FOUND: { status: 401, message: 'Session not found. Please log in again.' },

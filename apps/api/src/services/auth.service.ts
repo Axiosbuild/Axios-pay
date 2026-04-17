@@ -186,8 +186,6 @@ export async function acceptTerms(onboardingToken: string, accepted: boolean): P
       termsAcceptedAt: new Date(),
     },
   });
-
-  await redis.del(`terms:onboarding:${onboardingToken}`);
 }
 
 export interface KYCOnboardingInput {
