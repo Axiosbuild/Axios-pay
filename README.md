@@ -32,28 +32,30 @@ npm run build --workspace @axiospay/api
 | Too many retries / noisy reconnects | Unlimited request retries | Set `maxRetriesPerRequest: 3` and bounded `retryStrategy` |
 | Works locally but fails on Railway | Misconfigured env var value | Re-copy `REDIS_URL` in Railway, confirm no whitespace, redeploy |
 
-## Registration email (Railway + Resend)
+## Registration email (Railway + Gmail SMTP)
 
-- All transactional emails are sent via the [Resend](https://resend.com) Node SDK.
-- Set `RESEND_API_KEY` in your Railway service environment variables.
-- Verify your sending domain (`axiospay.space`) in the Resend dashboard → **Domains**.
-- `EMAIL_FROM` defaults to `info@axiospay.space` — update in Railway if you change the domain.
-- Verification email delivery is **best-effort** during registration; failures are logged but do not block the HTTP response. Users can retry via `POST /api/v1/auth/resend-verification`.
+- All transactional emails are sent via SMTP (Gmail recommended).
+- Enable 2-step verification on Gmail and generate an App Password.
+- Set `SMTP_USER` to your Gmail address and `SMTP_PASS` to the Gmail App Password.
+- `EMAIL_FROM` should typically match `SMTP_USER`.
+- Users must verify their email after registration using `POST /api/v1/auth/verify-email` (and can request a new code via `POST /api/v1/auth/verify-email/resend`).
 
 ### Railway environment variable checklist (email)
 
 | Variable | Required | Example |
 | --- | --- | --- |
-| `RESEND_API_KEY` | ✅ | `re_...` |
-| `EMAIL_FROM` | optional | `info@axiospay.space` |
+| `SMTP_HOST` | optional | `smtp.gmail.com` |
+| `SMTP_PORT` | optional | `465` |
+| `SMTP_SECURE` | optional | `true` |
+| `SMTP_USER` | ✅ | `you@gmail.com` |
+| `SMTP_PASS` | ✅ | `xxxx xxxx xxxx xxxx` |
+| `EMAIL_FROM` | optional | `you@gmail.com` |
 | `FRONTEND_URL` | ✅ | `https://axiospay.vercel.app` |
-| `VERIFICATION_TOKEN_TTL_MINUTES` | optional | `15` |
 
-### Resend failure troubleshooting
+### Gmail SMTP troubleshooting
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `[Resend] 403: ...` | Domain not verified or wrong API key | Verify domain in Resend dashboard, re-copy key |
-| `[Resend] 422: ...` | Invalid `from` address | Ensure `EMAIL_FROM` matches a verified Resend domain |
-| Emails not received | Resend free-tier limit or spam | Check Resend logs dashboard → **Emails** |
-| `placeholder-resend-api-key` warnings at startup | `RESEND_API_KEY` not set in Railway | Add the variable in Railway → **Variables** and redeploy |
+| `Invalid login` / SMTP auth error | Wrong app password or account password used | Regenerate Gmail App Password and update `SMTP_PASS` |
+| `Unable to verify first certificate` | TLS/port mismatch | Use `SMTP_PORT=465` with `SMTP_SECURE=true` |
+| Emails not received | Spam filtering or Gmail sender restrictions | Check Spam folder and Gmail security activity |

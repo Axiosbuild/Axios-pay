@@ -21,6 +21,7 @@ type FormData = z.infer<typeof schema>;
 
 const ERROR_MESSAGES: Record<string, string> = {
   INVALID_CREDENTIALS: 'Invalid username/phone number or password.',
+  EMAIL_NOT_VERIFIED: 'Please verify your email before logging in.',
   TERMS_NOT_ACCEPTED: 'You must accept the Terms and Conditions before continuing.',
   RATE_LIMIT: 'Too many attempts. Please wait 15 minutes.',
 };

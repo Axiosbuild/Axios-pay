@@ -7,6 +7,11 @@ const ERROR_MAP: Record<string, { status: number; message: string }> = {
   NATIONAL_ID_EXISTS: { status: 400, message: 'National ID already registered' },
   DUPLICATE_RESOURCE: { status: 400, message: 'A user with these details already exists' },
   INVALID_CREDENTIALS: { status: 401, message: 'Invalid username/phone number or password' },
+  EMAIL_NOT_VERIFIED: { status: 403, message: 'Please verify your email before logging in.' },
+  EMAIL_VERIFICATION_INVALID: {
+    status: 400,
+    message: 'Email verification link or code is invalid or expired.',
+  },
   TERMS_NOT_ACCEPTED: { status: 403, message: 'You must accept the Terms and Conditions before continuing.' },
   TERMS_ACCEPTANCE_SESSION_INVALID: { status: 401, message: 'Your terms acceptance session is invalid or expired. Please sign up again.' },
   KYC_SESSION_INVALID: { status: 401, message: 'Your KYC session is invalid or expired. Please sign up again.' },

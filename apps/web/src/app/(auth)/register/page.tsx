@@ -75,7 +75,9 @@ export default function RegisterPage() {
         sessionStorage.setItem('terms_onboarding_token', onboardingToken);
       }
 
-      router.push(`/terms?token=${encodeURIComponent(onboardingToken)}`);
+      router.push(
+        `/verify-email?email=${encodeURIComponent(data.email)}&onboardingToken=${encodeURIComponent(onboardingToken)}`
+      );
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       const code = e?.response?.data?.error || '';

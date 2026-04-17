@@ -44,6 +44,21 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
+const verifyEmailSchema = z
+  .object({
+    email: z.string().email(),
+    otp: z.string().length(6).optional(),
+    token: z.string().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.otp || value.token), {
+    message: 'Either otp or token is required',
+    path: ['otp'],
+  });
+
+const resendVerificationSchema = z.object({
+  email: z.string().email(),
+});
+
 const verify2FASchema = z.object({
   tempToken: z.string().min(1),
   token: z.string().length(6),
@@ -78,6 +93,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
       data: {
         userId: result.userId,
         requiresTermsAcceptance: result.requiresTermsAcceptance,
+        requiresEmailVerification: result.requiresEmailVerification,
         onboardingToken: result.onboardingToken,
       },
     });
@@ -190,6 +206,38 @@ export async function resetPassword(req: Request, res: Response, next: NextFunct
     const data = resetPasswordSchema.parse(req.body);
     await authService.resetPassword(data.email, data.otp, data.newPassword);
     res.json({ message: 'Password reset successfully. Please log in.' });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data = verifyEmailSchema.parse(req.body);
+    await authService.verifyEmail(data.email, data.otp, data.token);
+    res.json({ message: 'Email verified successfully.' });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
+      return;
+    }
+    next(err);
+  }
+}
+
+export async function resendVerificationEmail(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { email } = resendVerificationSchema.parse(req.body);
+    await authService.resendVerificationEmail(email);
+    res.json({ message: 'If that email exists, a verification code has been sent.' });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });

@@ -1,4 +1,4 @@
-import { sendResendEmail } from '../config/mailer';
+import { sendSmtpEmail } from '../config/mailer';
 import { env } from '../config/env';
 
 interface SendMailInput {
@@ -12,16 +12,16 @@ const EMAIL_FROM = `"AxiosPay" <${env.EMAIL_FROM ?? 'info@axiospay.space'}>`;
 
 export async function sendMail(input: SendMailInput): Promise<void> {
   try {
-    await sendResendEmail({
+    await sendSmtpEmail({
       from: EMAIL_FROM,
       to: input.to,
       subject: input.subject,
       html: input.html,
       text: input.text,
     });
-    console.log('[Resend] Email sent', { to: input.to, subject: input.subject });
+    console.log('[SMTP] Email sent', { to: input.to, subject: input.subject });
   } catch (error) {
-    console.error('[Resend] Failed to send email', {
+    console.error('[SMTP] Failed to send email', {
       to: input.to,
       subject: input.subject,
       error: error instanceof Error ? error.message : String(error),

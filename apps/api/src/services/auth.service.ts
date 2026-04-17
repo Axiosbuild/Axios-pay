@@ -13,12 +13,18 @@ import {
   storeVerificationValue,
   verifyOTP,
 } from './otp.service';
-import { sendWelcomeEmail, sendPasswordResetOTP, sendLoginNotificationEmail } from './email.service';
+import {
+  sendWelcomeEmail,
+  sendPasswordResetOTP,
+  sendLoginNotificationEmail,
+  sendEmailOTP,
+} from './email.service';
 import * as twoFactorService from './twoFactor.service';
 
 const RESET_OTP_TTL = 900; // 15 minutes
 const REGISTER_IDEMPOTENCY_TTL_SECONDS = 60 * 10;
 const TERMS_ONBOARDING_TTL_SECONDS = 60 * 60 * 24;
+const EMAIL_VERIFY_TTL_SECONDS = 60 * 10;
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
@@ -56,6 +62,7 @@ export async function register(
   onboardingToken: string;
   message: string;
   requiresTermsAcceptance: true;
+  requiresEmailVerification: true;
 }> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
@@ -68,6 +75,7 @@ export async function register(
           onboardingToken: string;
           message: string;
           requiresTermsAcceptance: true;
+          requiresEmailVerification: true;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -156,6 +164,12 @@ export async function register(
         reason: error instanceof Error ? error.message : String(error),
       });
     });
+    await issueEmailVerificationChallenge(user.id, user.email, user.firstName).catch((error) => {
+      console.warn('Email verification challenge task failed unexpectedly', {
+        userId: user.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     // 48-char token provides high entropy while remaining URL-safe for onboarding redirects.
     const onboardingToken = nanoid(48);
@@ -166,6 +180,7 @@ export async function register(
       onboardingToken,
       message: 'Registration successful. Please review and accept the Terms and Conditions.',
       requiresTermsAcceptance: true as const,
+      requiresEmailVerification: true as const,
     };
 
     if (idempotencyCacheKey) {
@@ -280,6 +295,7 @@ export async function login(input: LoginInput): Promise<{
 
   const valid = await bcrypt.compare(input.password, user.passwordHash);
   if (!valid) throw new Error('INVALID_CREDENTIALS');
+  if (!user.isEmailVerified) throw new Error('EMAIL_NOT_VERIFIED');
 
   if (!user.termsAccepted) throw new Error('TERMS_NOT_ACCEPTED');
 
@@ -424,6 +440,56 @@ export async function forgotPassword(email: string): Promise<void> {
   await sendPasswordResetOTP(user.email, user.firstName, otp);
 }
 
+export async function verifyEmail(email: string, otp?: string, token?: string): Promise<void> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+    select: { id: true, isEmailVerified: true },
+  });
+
+  if (!user) throw new Error('EMAIL_VERIFICATION_INVALID');
+  if (user.isEmailVerified) return;
+
+  const normalizedToken = token?.trim();
+  if (normalizedToken) {
+    const mappedUserId = await getVerificationValue(`email-verify-token:${normalizedToken}`);
+    if (!mappedUserId || mappedUserId !== user.id) {
+      throw new Error('EMAIL_VERIFICATION_INVALID');
+    }
+  } else {
+    if (!otp) throw new Error('OTP_INVALID');
+    await verifyOTP(`email-verify:${user.id}`, otp);
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { isEmailVerified: true },
+  });
+
+  const activeToken = await getVerificationValue(`email-verify-active-token:${user.id}`);
+  await Promise.all([
+    deleteVerificationValue(`email-verify-email:${normalizedEmail}`),
+    deleteVerificationValue(`email-verify-active-token:${user.id}`),
+    deleteVerificationValue(`email-verify:${user.id}`),
+    ...(activeToken ? [deleteVerificationValue(`email-verify-token:${activeToken}`)] : []),
+    ...(normalizedToken ? [deleteVerificationValue(`email-verify-token:${normalizedToken}`)] : []),
+  ]);
+}
+
+export async function resendVerificationEmail(email: string): Promise<void> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+    select: { id: true, email: true, firstName: true, isEmailVerified: true },
+  });
+
+  if (!user || user.isEmailVerified) {
+    return;
+  }
+
+  await issueEmailVerificationChallenge(user.id, user.email, user.firstName);
+}
+
 export async function resetPassword(email: string, otp: string, newPassword: string): Promise<void> {
   const normalizedEmail = email.trim().toLowerCase();
   const userId = await getVerificationValue(`reset-email:${normalizedEmail}`);
@@ -526,4 +592,34 @@ function mapRegisterErrorCode(error: unknown): string | null {
   }
 
   return null;
+}
+
+async function issueEmailVerificationChallenge(
+  userId: string,
+  email: string,
+  firstName: string
+): Promise<void> {
+  const otp = generateOTP();
+  const verificationToken = nanoid(48);
+  const normalizedEmail = email.trim().toLowerCase();
+  const previousToken = await getVerificationValue(`email-verify-active-token:${userId}`);
+  if (previousToken) {
+    await deleteVerificationValue(`email-verify-token:${previousToken}`);
+  }
+
+  await Promise.all([
+    storeOTP(`email-verify:${userId}`, otp, EMAIL_VERIFY_TTL_SECONDS),
+    storeVerificationValue(`email-verify-email:${normalizedEmail}`, userId, EMAIL_VERIFY_TTL_SECONDS),
+    storeVerificationValue(`email-verify-token:${verificationToken}`, userId, EMAIL_VERIFY_TTL_SECONDS),
+    storeVerificationValue(
+      `email-verify-active-token:${userId}`,
+      verificationToken,
+      EMAIL_VERIFY_TTL_SECONDS
+    ),
+  ]);
+
+  const verificationLink = `${env.FRONTEND_URL}/verify-email?token=${encodeURIComponent(
+    verificationToken
+  )}&email=${encodeURIComponent(normalizedEmail)}`;
+  await sendEmailOTP(email, firstName, otp, verificationLink);
 }
