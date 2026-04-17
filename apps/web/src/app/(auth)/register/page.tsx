@@ -5,10 +5,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Card } from '@/components/ui/Card';
 import { useCountryDetect } from '@/hooks/useCountryDetect';
 import { CountrySelect } from '@/components/ui/CountrySelect';
 import { CountryConfig, getCountryByCode } from '@/lib/countries';
@@ -93,11 +93,20 @@ export default function RegisterPage() {
   }
 
   return (
-    <Card>
-      <h2 className="font-display text-xl font-semibold text-text-primary mb-6">Create your account</h2>
+    <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+      <div className="mb-6">
+        <p className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+          <Sparkles className="h-3.5 w-3.5" />
+          Open Account
+        </p>
+        <h2 className="mt-4 font-display text-2xl font-bold text-slate-950">Create your Axios Pay account</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Set up your profile to start funding wallets and moving money across supported corridors.
+        </p>
+      </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>
+        <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-error">{error}</div>
       )}
 
       <form onSubmit={handleSubmit(onStep2)} className="space-y-4">
@@ -122,13 +131,21 @@ export default function RegisterPage() {
         <Input label="Identity Information" placeholder="National ID / Government ID" {...register('identity')} error={errors.identity?.message} />
         <Input label="Password" type="password" {...register('password')} error={errors.password?.message} />
         <Input label="Confirm Password" type="password" {...register('confirmPassword')} error={errors.confirmPassword?.message} />
-        <Button type="submit" loading={loading} disabled={loading} className="w-full">Create Account</Button>
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+          <p className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600" /> KYC and security verification are required before high-value transfers.</p>
+          <p className="mt-2 flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Use your legal details to avoid onboarding delays.</p>
+        </div>
+
+        <Button type="submit" loading={loading} disabled={loading} className="mt-2 w-full bg-slate-900 hover:bg-slate-800">
+          Create Account
+        </Button>
       </form>
 
-      <p className="text-center text-sm text-text-muted mt-6">
+      <p className="mt-8 border-t border-slate-200 pt-6 text-center text-sm text-slate-600">
         Already have an account?{' '}
-        <Link href="/login" className="text-brand-amber hover:underline font-medium">Log in</Link>
+        <Link href="/login" className="font-semibold text-emerald-700 transition hover:text-emerald-600">Log in</Link>
       </p>
-    </Card>
+    </div>
   );
 }
