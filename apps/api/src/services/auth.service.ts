@@ -77,7 +77,7 @@ export async function register(
     
     const normalizedUsername = normalizeUsername(usernameToUse);
     const normalizedPhoneNumber = normalizePhoneNumber(input.phoneNumber);
-    const identity = input.identity.trim();
+    const identity = (input.identity ?? '').trim();
     const { firstName, lastName } = deriveNameFromUsername(normalizedUsername);
     const passwordHash = await bcrypt.hash(input.password, 12);
 
