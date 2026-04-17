@@ -18,23 +18,19 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 type Tab = 'card' | 'bank' | 'ussd' | 'auto';
 
-declare global {
-  interface Window {
-    webpayCheckout?: (config: {
-      merchant_code: string;
-      pay_item_id: string;
-      txn_ref: string;
-      site_redirect_url: string;
-      amount: number;
-      currency: number;
-      cust_name: string;
-      cust_email: string;
-      cust_id: string;
-      mode: string;
-      onComplete: (response: { resp?: string }) => void;
-    }) => void;
-  }
-}
+type LegacyWebpayCheckoutConfig = {
+  merchant_code: string;
+  pay_item_id: string;
+  txn_ref: string;
+  site_redirect_url: string;
+  amount: number;
+  currency: number;
+  cust_name: string;
+  cust_email: string;
+  cust_id: string;
+  mode: string;
+  onComplete: (response: { resp?: string }) => void;
+};
 
 export default function DepositPage() {
   const [tab, setTab] = useState<Tab>('card');
@@ -279,12 +275,16 @@ export default function DepositPage() {
       setTransferToken('');
       setOtpAmount(null);
       setOtpVerified(false);
-      if (!window.webpayCheckout) {
+      const checkout = (window as Window & {
+        webpayCheckout?: (config: LegacyWebpayCheckoutConfig) => void;
+      }).webpayCheckout;
+
+      if (!checkout) {
         setError('Inline checkout is unavailable. Please refresh and try again.');
         return;
       }
 
-      window.webpayCheckout({
+      checkout({
         merchant_code: process.env.NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE || '',
         pay_item_id: process.env.NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID || '',
         txn_ref: reference,
