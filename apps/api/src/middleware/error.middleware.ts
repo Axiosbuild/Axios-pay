@@ -56,10 +56,10 @@ export function errorMiddleware(
 ): void {
   const mapped = ERROR_MAP[err.message];
   if (mapped) {
-    res.status(mapped.status).json({ error: err.message, message: mapped.message });
+    res.status(mapped.status).json({ success: false, error: err.message, message: mapped.message });
     return;
   }
 
   console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' });
+  res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' });
 }

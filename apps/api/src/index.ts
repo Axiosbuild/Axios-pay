@@ -5,6 +5,7 @@ import { env } from './config/env';
 import app from './app';
 import { refreshAllRates } from './services/rates.service';
 import { processRecurring } from './services/recurring.service';
+import { verifySmtpTransport } from './config/mailer';
 
 async function start(): Promise<void> {
   try {
@@ -32,6 +33,8 @@ async function start(): Promise<void> {
     redisBootstrapPromise.catch(() => {
       // errors are already handled in the bootstrap block above
     });
+
+    await verifySmtpTransport();
 
     // 4. Fetch all rates immediately
     try {

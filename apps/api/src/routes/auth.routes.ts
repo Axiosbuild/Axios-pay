@@ -54,6 +54,7 @@ router.use((req, res, next) => {
  */
 router.post('/register', authLimiter, authController.register);
 router.post('/verify-email', authLimiter, authController.verifyEmail);
+router.get('/verify-email', authLimiter, authController.verifyEmailFromQuery);
 router.get('/verify-email-link', authLimiter, authController.verifyEmailLink);
 router.post('/verify-phone', authLimiter, authController.verifyPhone);
 router.post('/login', authLimiter, authController.login);
@@ -62,6 +63,7 @@ router.post('/logout', authController.logout);
 router.post('/forgot-password', authLimiter, authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 router.post('/resend-otp', authLimiter, authController.resendOTP);
+router.post('/resend-verification', authLimiter, authController.resendVerification);
 router.post('/2fa/verify', authLimiter, authController.verify2FALogin);
 
 // New Nodemailer-backed verification endpoints
