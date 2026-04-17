@@ -1,4 +1,4 @@
-import { transporter } from '../config/mailer';
+import { sendResendEmail } from '../config/mailer';
 import { env } from '../config/env';
 
 interface SendMailInput {
@@ -8,20 +8,20 @@ interface SendMailInput {
   text?: string;
 }
 
-const EMAIL_FROM = `"AxiosPay" <${env.SMTP_USER}>`;
+const EMAIL_FROM = `"AxiosPay" <${env.EMAIL_FROM ?? 'info@axiospay.space'}>`;
 
 export async function sendMail(input: SendMailInput): Promise<void> {
   try {
-    await transporter.sendMail({
+    await sendResendEmail({
       from: EMAIL_FROM,
       to: input.to,
       subject: input.subject,
       html: input.html,
       text: input.text,
     });
-    console.log('[SMTP] Sent to:', input.to);
+    console.log('[Resend] Sent to:', input.to);
   } catch (error) {
-    console.error('[SMTP] Failed:', error);
+    console.error('[Resend] Failed:', error);
     throw error;
   }
 }

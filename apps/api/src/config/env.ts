@@ -28,16 +28,8 @@ const envSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().min(1).default('placeholder-twilio-sid'),
   TWILIO_AUTH_TOKEN: z.string().min(1).default('placeholder-twilio-token'),
   TWILIO_PHONE_NUMBER: z.string().min(1).default('placeholder-twilio-number'),
-  SMTP_HOST: z.string().min(1).default('smtp.gmail.com'),
-  SMTP_PORT: z.coerce.number().default(465),
-  SMTP_SECURE: z.coerce.boolean().default(true),
-  SMTP_USER: z.string().min(1).default('info@axiospay.space'),
-  EMAIL_FROM: z.string().email().optional(),
-  SMTP_FROM: z.string().email().optional(),
-  SMTP_PASS: z.string().min(1).default('placeholder-smtp-pass'),
-  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().default(5000),
-  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().default(10000),
-  SMTP_SEND_TIMEOUT_MS: z.coerce.number().default(5000),
+  RESEND_API_KEY: z.string().min(1).default('placeholder-resend-api-key'),
+  EMAIL_FROM: z.string().email().default('info@axiospay.space'),
   APP_BASE_URL: z.string().url().default('http://localhost:8080').transform((value) => new URL(value).origin),
   FRONTEND_URL: z
     .string()
@@ -83,16 +75,8 @@ const defaultedKeys = [
   'NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE',
   'NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID',
   'INTERSWITCH_WEBHOOK_SECRET',
-  'SMTP_USER',
-  'SMTP_HOST',
-  'SMTP_PORT',
-  'SMTP_SECURE',
+  'RESEND_API_KEY',
   'EMAIL_FROM',
-  'SMTP_FROM',
-  'SMTP_PASS',
-  'SMTP_CONNECTION_TIMEOUT_MS',
-  'SMTP_SOCKET_TIMEOUT_MS',
-  'SMTP_SEND_TIMEOUT_MS',
   'ENCRYPTION_KEY',
   'ADMIN_EMAIL',
   'EXCHANGE_RATE_API_KEY',
@@ -112,7 +96,6 @@ if (missingKeys.length > 0) {
 
   const normalizedEnv = {
   ...result.data,
-  EMAIL_FROM: result.data.EMAIL_FROM || result.data.SMTP_FROM || result.data.SMTP_USER,
   // BASE_URL is kept for requested .env compatibility, while INTERSWITCH_BASE_URL
   // is the canonical key consumed by services in this codebase.
   INTERSWITCH_BASE_URL: result.data.INTERSWITCH_BASE_URL || result.data.BASE_URL,
