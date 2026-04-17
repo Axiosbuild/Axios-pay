@@ -32,15 +32,28 @@ npm run build --workspace @axiospay/api
 | Too many retries / noisy reconnects | Unlimited request retries | Set `maxRetriesPerRequest: 3` and bounded `retryStrategy` |
 | Works locally but fails on Railway | Misconfigured env var value | Re-copy `REDIS_URL` in Railway, confirm no whitespace, redeploy |
 
-## Registration email troubleshooting (Vercel + Gmail SMTP)
+## Registration email (Railway + Resend)
 
-- Prefer Gmail SMTP over SSL on port `465` with pooled transport (`pool: true`, `maxConnections: 5`).
-- Keep `SMTP_CONNECTION_TIMEOUT_MS=5000` and `SMTP_SOCKET_TIMEOUT_MS=10000` to avoid hanging requests.
-- Registration now persists the user first; verification email delivery is best-effort and can be retried with resend.
-- Use Vercel logs to inspect request traces:
+- All transactional emails are sent via the [Resend](https://resend.com) Node SDK.
+- Set `RESEND_API_KEY` in your Railway service environment variables.
+- Verify your sending domain (`axiospay.space`) in the Resend dashboard → **Domains**.
+- `EMAIL_FROM` defaults to `info@axiospay.space` — update in Railway if you change the domain.
+- Verification email delivery is **best-effort** during registration; failures are logged but do not block the HTTP response. Users can retry via `POST /api/v1/auth/resend-verification`.
 
-```bash
-vercel logs --prod
-```
+### Railway environment variable checklist (email)
 
-- Look for `x-vercel-id` and request identifiers in registration email delay logs.
+| Variable | Required | Example |
+| --- | --- | --- |
+| `RESEND_API_KEY` | ✅ | `re_...` |
+| `EMAIL_FROM` | optional | `info@axiospay.space` |
+| `FRONTEND_URL` | ✅ | `https://axiospay.vercel.app` |
+| `VERIFICATION_TOKEN_TTL_MINUTES` | optional | `15` |
+
+### Resend failure troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `[Resend] 403: ...` | Domain not verified or wrong API key | Verify domain in Resend dashboard, re-copy key |
+| `[Resend] 422: ...` | Invalid `from` address | Ensure `EMAIL_FROM` matches a verified Resend domain |
+| Emails not received | Resend free-tier limit or spam | Check Resend logs dashboard → **Emails** |
+| `placeholder-resend-api-key` warnings at startup | `RESEND_API_KEY` not set in Railway | Add the variable in Railway → **Variables** and redeploy |
