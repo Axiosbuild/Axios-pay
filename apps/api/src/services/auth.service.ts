@@ -282,13 +282,18 @@ export async function login(input: LoginInput): Promise<{
 
   const { passwordHash: _, transactionPin: __, twoFactorSecret: ___, ...userWithoutHash } = user;
 
-  await sendLoginNotificationEmail(
+  sendLoginNotificationEmail(
     user.email,
     user.firstName,
     input.ipAddress,
     input.userAgent,
     new Date()
-  );
+  ).catch((error) => {
+    console.warn('Login notification email task failed unexpectedly', {
+      userId: user.id,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   return { accessToken, refreshToken, user: userWithoutHash };
 }
@@ -331,13 +336,18 @@ export async function verify2FALogin(
 
   const { passwordHash: _, transactionPin: __, twoFactorSecret: ___, ...userWithoutHash } = user;
 
-  await sendLoginNotificationEmail(
+  sendLoginNotificationEmail(
     user.email,
     user.firstName,
     ipAddress,
     userAgent,
     new Date()
-  );
+  ).catch((error) => {
+    console.warn('2FA login notification email task failed unexpectedly', {
+      userId: user.id,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   return { accessToken, refreshToken, user: userWithoutHash };
 }
