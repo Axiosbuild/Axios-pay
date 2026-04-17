@@ -1,617 +1,288 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Copy } from 'lucide-react';
-import { api } from '@/lib/api';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { OTPInput } from '@/components/ui/OTPInput';
+import Script from 'next/script';
+import { BadgeDollarSign, CreditCard, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 
-const schema = z.object({
-  amount: z.coerce.number().positive().min(100, 'Minimum deposit is ₦100'),
-});
+const INTERSWITCH_INLINE_SCRIPT_URL =
+  process.env.NEXT_PUBLIC_INTERSWITCH_INLINE_SCRIPT_URL || 'https://sandbox.interswitchng.com/collections/w/pay';
+const PAY_ITEM_ID = process.env.NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID || 'Default_Payable_MX';
 
-type FormData = z.infer<typeof schema>;
-type Tab = 'card' | 'bank' | 'ussd' | 'auto';
+type PaymentGatewayResponse = {
+  resp?: string;
+  status?: string;
+  message?: string;
+  txn_ref?: string;
+  transactionRef?: string;
+};
 
-type LegacyWebpayCheckoutConfig = {
+type CheckoutConfig = {
   merchant_code: string;
   pay_item_id: string;
-  txn_ref: string;
   site_redirect_url: string;
   amount: number;
   currency: number;
-  cust_name: string;
-  cust_email: string;
-  cust_id: string;
-  mode: string;
-  onComplete: (response: { resp?: string }) => void;
+  txn_ref: string;
+  customer_email: string;
+  callback?: (response: PaymentGatewayResponse) => void;
+  onComplete?: (response: PaymentGatewayResponse) => void;
+  onClose?: () => void;
 };
 
+type VerifyDepositResponse = {
+  success?: boolean;
+  status?: string;
+  message?: string;
+  walletBalance?: number;
+  balance?: number;
+};
+
+function buildTxnRef() {
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `AXIOSPAY-${Date.now()}-${suffix}`;
+}
+
 export default function DepositPage() {
-  const [tab, setTab] = useState<Tab>('card');
-  const [cardLoading, setCardLoading] = useState(false);
-  const [ussdLoading, setUssdLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [copyMessage, setCopyMessage] = useState('');
-  const [ussdCode, setUssdCode] = useState('');
-  const [inlineMessage, setInlineMessage] = useState('');
-  const [recurringAmount, setRecurringAmount] = useState('100');
-  const [recurringFrequency, setRecurringFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('MONTHLY');
-  const [recurringLoading, setRecurringLoading] = useState(false);
-  const [recurringItems, setRecurringItems] = useState<
-    Array<{ id: string; amount: string; frequency: string; nextRunAt: string }>
-  >([]);
-  const [otpSessionToken, setOtpSessionToken] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpTxRef, setOtpTxRef] = useState('');
-  const [transferToken, setTransferToken] = useState('');
-  const [otpAmount, setOtpAmount] = useState<number | null>(null);
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const updateUser = useAuthStore((state) => state.updateUser);
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    formState: { errors },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: { amount: 100 },
+  const [amount, setAmount] = useState('1000');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [walletBalance, setWalletBalance] = useState<number>(() => {
+    const wallet = user?.wallets?.find((entry) => entry.currency === 'NGN');
+    return wallet ? Number(wallet.balance) : 0;
   });
-
-  const {
-    register: registerUssd,
-    handleSubmit: handleUssdSubmit,
-    watch: watchUssd,
-    formState: { errors: ussdErrors },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: { amount: 100 },
-  });
-
-  const amount = Number(watch('amount')) || 0;
-  const ussdAmount = Number(watchUssd('amount')) || 0;
-  const fee = useMemo(() => (amount > 0 ? amount * 0.015 : 0), [amount]);
-  const total = useMemo(() => amount + fee, [amount, fee]);
-
-  const virtualAccountNumber = '1022334455';
-  const virtualBankName = 'Interswitch Virtual Bank';
-  const merchantCode = process.env.NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE || 'MERCHANT_CODE';
-
-  const interswitchMode = process.env.NEXT_PUBLIC_INTERSWITCH_MODE || 'TEST';
-  const inlineScriptUrl =
-    process.env.NEXT_PUBLIC_INTERSWITCH_INLINE_SCRIPT_URL ||
-    (interswitchMode.toUpperCase() === 'LIVE'
-      ? 'https://newwebpay.interswitchng.com/inline-checkout.js'
-      : 'https://newwebpay.qa.interswitchng.com/inline-checkout.js');
+  const [message, setMessage] = useState('');
+  const [isScriptReady, setIsScriptReady] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [pendingTxnRef, setPendingTxnRef] = useState('');
 
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = inlineScriptUrl;
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, [inlineScriptUrl]);
-
-  useEffect(() => {
-    if (tab !== 'bank') return;
-    const timer = window.setInterval(() => {
-      api.wallets.getTransactions({ page: 1, limit: 20, type: 'DEPOSIT' }).catch(() => {});
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, [tab]);
-
-  useEffect(() => {
-    if (tab !== 'ussd') return;
-    const timer = window.setInterval(() => {
-      api.wallets.getTransactions({ page: 1, limit: 20, type: 'DEPOSIT' }).catch(() => {});
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, [tab]);
-
-  useEffect(() => {
-    if (tab !== 'auto') return;
-    api.wallets
-      .listRecurring()
-      .then((r) => setRecurringItems(r.data || []))
-      .catch(() => setRecurringItems([]));
-  }, [tab]);
-
-  async function copyText(value: string, successMessage: string) {
-    await navigator.clipboard.writeText(value);
-    setCopyMessage(successMessage);
-    window.setTimeout(() => setCopyMessage(''), 2000);
-  }
-
-  function buildTransactionReference(): string {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
+    const wallet = user?.wallets?.find((entry) => entry.currency === 'NGN');
+    if (wallet) {
+      setWalletBalance(Number(wallet.balance));
     }
-    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-      const bytes = new Uint8Array(16);
-      crypto.getRandomValues(bytes);
-      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    if (user?.email) {
+      setEmail(user.email);
     }
-    throw new Error('Browser does not support secure random generation. Please use a modern browser.');
-  }
+  }, [user?.wallets, user?.email]);
 
-  async function requestPaymentOtp(amountToPay: number): Promise<boolean> {
-    if (!user?.phoneNumber) {
-      setError('A verified phone number is required to request OTP.');
-      return false;
+  const parsedAmount = useMemo(() => {
+    const value = Number.parseFloat(amount.replace(/,/g, ''));
+    return Number.isFinite(value) ? value : 0;
+  }, [amount]);
+
+  const formattedAmount = useMemo(() => {
+    if (parsedAmount <= 0) {
+      return '0.00';
     }
+    return parsedAmount.toLocaleString('en-NG', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }, [parsedAmount]);
 
-    const transactionReference = buildTransactionReference();
-    setOtpLoading(true);
-    setError('');
-    try {
-      const result = await api.otp.request({
-        customerPhone: user.phoneNumber,
-        transactionReference,
-        amount: amountToPay,
-      });
-      setOtpSessionToken(result.data?.sessionToken ?? '');
-      setOtpTxRef(transactionReference);
-      setOtpAmount(amountToPay);
-      setTransferToken('');
-      setOtpVerified(false);
-      setOtpCode('');
-      setInlineMessage('OTP sent. Enter the code to continue.');
-      return true;
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
-      setError(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to request OTP.');
-      return false;
-    } finally {
-      setOtpLoading(false);
-    }
-  }
-
-  async function verifyPaymentOtp() {
-    if (!otpSessionToken || !otpTxRef || otpCode.length !== 6) {
-      setError('Enter the 6-digit OTP code.');
+  async function verifyDeposit(txnRef: string) {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    if (!backendUrl) {
+      setMessage('Missing NEXT_PUBLIC_BACKEND_URL. Add it to .env.local.');
       return;
     }
-    setOtpLoading(true);
-    setError('');
+
+    setIsVerifying(true);
+    setMessage('Verifying deposit...');
+
     try {
-      const result = await api.otp.verify({
-        sessionToken: otpSessionToken,
-        otp: otpCode,
-        transactionReference: otpTxRef,
-      });
-      setTransferToken(result.data?.transferToken ?? '');
-      setOtpVerified(true);
-      setInlineMessage('OTP verified. You can now complete this payment.');
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
-      setError(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'OTP verification failed.');
-    } finally {
-      setOtpLoading(false);
-    }
-  }
-
-  async function resendPaymentOtp() {
-    if (!user?.phoneNumber || !otpTxRef || !otpAmount) return;
-    setOtpLoading(true);
-    setError('');
-    try {
-      const result = await api.otp.resend({
-        sessionToken: otpSessionToken || undefined,
-        customerPhone: user.phoneNumber,
-        transactionReference: otpTxRef,
-        amount: otpAmount,
-      });
-      setOtpSessionToken(result.data?.sessionToken ?? '');
-      setOtpCode('');
-      setOtpVerified(false);
-      setTransferToken('');
-      setInlineMessage('OTP resent.');
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
-      setError(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Failed to resend OTP.');
-    } finally {
-      setOtpLoading(false);
-    }
-  }
-
-  async function initiateDeposit(
-    amountToPay: number,
-    payload: { transferToken: string; transactionReference: string }
-  ): Promise<{ paymentUrl: string; reference: string }> {
-    const result = await api.wallets.initiateDeposit({
-      amount: amountToPay,
-      transferToken: payload.transferToken,
-      transactionReference: payload.transactionReference,
-    });
-    const paymentUrl = result.data?.paymentUrl as string | undefined;
-    const reference = result.data?.reference as string | undefined;
-    if (!paymentUrl || !reference) throw new Error('Payment link unavailable. Please try again.');
-    return { paymentUrl, reference };
-  }
-
-  async function verifyInlineDeposit(reference: string) {
-    try {
-      const response = await api.wallets.verifyDeposit(reference);
-      const status = response.data?.status as string | undefined;
-      if (status === 'PAID') setInlineMessage('Payment successful and wallet credited.');
-      else if (status === 'PENDING') setInlineMessage('Payment submitted. Verification in progress.');
-      else setInlineMessage('Payment failed verification.');
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
-      setInlineMessage(e?.response?.data?.message || e?.message || 'Unable to verify payment.');
-    }
-  }
-
-  async function onCardSubmit(data: FormData) {
-    setCardLoading(true);
-    setError('');
-    setInlineMessage('');
-    try {
-      if (!otpVerified || !transferToken || !otpTxRef || otpAmount !== data.amount) {
-        if (otpAmount !== null && otpAmount !== data.amount) {
-          setOtpVerified(false);
-          setTransferToken('');
-        }
-        await requestPaymentOtp(data.amount);
-        return;
-      }
-
-      const { reference } = await initiateDeposit(data.amount, {
-        transferToken,
-        transactionReference: otpTxRef,
-      });
-      setOtpSessionToken('');
-      setOtpCode('');
-      setOtpTxRef('');
-      setTransferToken('');
-      setOtpAmount(null);
-      setOtpVerified(false);
-      const checkout = (window as Window & {
-        webpayCheckout?: (config: LegacyWebpayCheckoutConfig) => void;
-      }).webpayCheckout;
-
-      if (!checkout) {
-        setError('Inline checkout is unavailable. Please refresh and try again.');
-        return;
-      }
-
-      checkout({
-        merchant_code: process.env.NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE || '',
-        pay_item_id: process.env.NEXT_PUBLIC_INTERSWITCH_PAY_ITEM_ID || '',
-        txn_ref: reference,
-        site_redirect_url: `${window.location.origin}/dashboard/deposit/callback`,
-        amount: Math.round(data.amount * 100),
-        currency: 566,
-        cust_name: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
-        cust_email: user?.email || '',
-        cust_id: user?.id || '',
-        mode: interswitchMode,
-        onComplete: (response: { resp?: string }) => {
-          if (response.resp === '00') verifyInlineDeposit(reference);
-          else setInlineMessage('Payment was not completed. Please try again.');
+      const response = await fetch(`${backendUrl}/api/payments/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ txn_ref: txnRef }),
       });
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
-      setError(e?.response?.data?.message || e?.message || 'Failed to initiate payment.');
+
+      const payload = (await response.json()) as VerifyDepositResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Unable to verify deposit.');
+      }
+
+      const isSuccessful = payload.success === true || payload.status === 'SUCCESS' || payload.status === 'PAID';
+      if (!isSuccessful) {
+        throw new Error(payload.message || 'Deposit was not confirmed.');
+      }
+
+      const nextBalance =
+        typeof payload.walletBalance === 'number'
+          ? payload.walletBalance
+          : typeof payload.balance === 'number'
+            ? payload.balance
+            : walletBalance + parsedAmount;
+
+      setWalletBalance(nextBalance);
+      setMessage('Deposit successful. Wallet balance updated.');
+
+      if (user?.wallets) {
+        updateUser({
+          wallets: user.wallets.map((wallet) =>
+            wallet.currency === 'NGN' ? { ...wallet, balance: nextBalance.toString() } : wallet
+          ),
+        });
+      }
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : 'Deposit verification failed.');
     } finally {
-      setCardLoading(false);
+      setIsVerifying(false);
+      setIsLaunching(false);
     }
   }
 
-  async function onGenerateUssd(data: FormData) {
-    setUssdLoading(true);
-    setError('');
-    try {
-      if (!otpVerified || !transferToken || !otpTxRef || otpAmount !== data.amount) {
-        if (otpAmount !== null && otpAmount !== data.amount) {
-          setOtpVerified(false);
-          setTransferToken('');
+  function handleFundWallet() {
+    const merchantCode = process.env.NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE;
+    const checkout = (window as Window & { webpayCheckout?: (config: CheckoutConfig) => void }).webpayCheckout;
+
+    if (!merchantCode) {
+      setMessage('Missing NEXT_PUBLIC_INTERSWITCH_MERCHANT_CODE. Add it to .env.local.');
+      return;
+    }
+
+    if (parsedAmount < 100) {
+      setMessage('Enter at least NGN 100 to continue.');
+      return;
+    }
+
+    if (!email.trim()) {
+      setMessage('Enter a valid email address for the payment receipt.');
+      return;
+    }
+
+    if (!isScriptReady || typeof checkout !== 'function') {
+      setMessage('Payment gateway is still loading. Please try again in a moment.');
+      return;
+    }
+
+    const txnRef = buildTxnRef();
+    const amountInKobo = Math.round(parsedAmount * 100);
+    setPendingTxnRef(txnRef);
+    setIsLaunching(true);
+    setMessage('Opening secure card checkout...');
+
+    const completeFlow = (response: PaymentGatewayResponse) => {
+      const responseTxnRef = response.txn_ref || response.transactionRef || txnRef;
+      setPendingTxnRef(responseTxnRef);
+      setMessage('Card payment completed. Verifying deposit...');
+      void verifyDeposit(responseTxnRef);
+    };
+
+    checkout({
+      merchant_code: merchantCode,
+      pay_item_id: PAY_ITEM_ID,
+      site_redirect_url: window.location.href,
+      amount: amountInKobo,
+      currency: 566,
+      txn_ref: txnRef,
+      customer_email: email.trim(),
+      callback: completeFlow,
+      onComplete: completeFlow,
+      onClose: () => {
+        setIsLaunching(false);
+        if (!pendingTxnRef) {
+          setMessage('Payment window closed.');
         }
-        await requestPaymentOtp(data.amount);
-        return;
-      }
-
-      const result = await api.wallets.initiateDeposit({
-        amount: data.amount,
-        transferToken,
-        transactionReference: otpTxRef,
-      });
-      const reference = result.data?.reference as string | undefined;
-      if (!reference) {
-        setError('Unable to generate USSD code. Please try again.');
-        return;
-      }
-      setOtpSessionToken('');
-      setOtpCode('');
-      setOtpTxRef('');
-      setTransferToken('');
-      setOtpAmount(null);
-      setOtpVerified(false);
-      setUssdCode(`*322*${merchantCode}*${Math.round(data.amount)}*${reference}#`);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
-      setError(e?.response?.data?.message || e?.message || 'Failed to generate USSD code.');
-    } finally {
-      setUssdLoading(false);
-    }
+      },
+    });
   }
 
-  async function setupRecurringDeposit() {
-    setRecurringLoading(true);
-    setError('');
-    try {
-      await api.wallets.createRecurring({
-        amount: Number(recurringAmount),
-        frequency: recurringFrequency,
-      });
-      setInlineMessage('Auto-Deposit schedule created successfully.');
-      const recurringResult = await api.wallets.listRecurring();
-      setRecurringItems(recurringResult.data || []);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
-      setError(e?.response?.data?.message || e?.message || 'Unable to set up Auto-Deposit.');
-    } finally {
-      setRecurringLoading(false);
-    }
-  }
-
-  async function cancelRecurring(id: string) {
-    try {
-      await api.wallets.cancelRecurring(id);
-      setRecurringItems((prev) => prev.filter((item) => item.id !== id));
-    } catch {
-      // ignore
-    }
-  }
+  const isBusy = isLaunching || isVerifying;
 
   return (
-    <div className="max-w-lg w-full">
-      <h1 className="font-display text-[clamp(1.5rem,4vw,2.5rem)] font-bold text-text-primary mb-6">Deposit</h1>
+    <main className="mx-auto min-h-screen max-w-md bg-gray-50 px-5 py-6">
+      <Script
+        id="interswitch-inline-sdk"
+        src={INTERSWITCH_INLINE_SCRIPT_URL}
+        strategy="afterInteractive"
+        onLoad={() => {
+          const checkout = (window as Window & { webpayCheckout?: unknown }).webpayCheckout;
+          setIsScriptReady(typeof checkout === 'function');
+          if (typeof checkout !== 'function') {
+            setMessage('Payment gateway loaded, but the inline checkout function is unavailable.');
+          }
+        }}
+        onError={() => {
+          setIsScriptReady(false);
+          setMessage('Unable to load the payment gateway script. Check your connection and try again.');
+        }}
+      />
 
-      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        {[
-          { label: 'Pay via Interswitch Link', value: 'card' as const },
-          { label: 'Bank Transfer', value: 'bank' as const },
-          { label: 'USSD', value: 'ussd' as const },
-          { label: 'Auto-Deposit', value: 'auto' as const },
-        ].map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => setTab(item.value)}
-            className={`px-4 py-2 min-h-11 rounded-full text-sm whitespace-nowrap transition-all duration-200 ${
-              tab === item.value
-                ? 'bg-brand-amber text-white'
-                : 'bg-subtle text-text-secondary hover:bg-border'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
+      <div className="rounded-3xl bg-white p-6 shadow-xl ring-1 ring-black/5">
+        <div className="inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-xs font-medium text-brand-amber">
+          <BadgeDollarSign className="h-3.5 w-3.5" />
+          Fund Wallet
+        </div>
+
+        <h1 className="mt-4 font-display text-3xl font-bold text-text-primary">Deposit with Interswitch</h1>
+        <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+          Enter the amount you want to fund, then pay securely with your card in the Interswitch inline modal.
+        </p>
+
+        <div className="mt-6 rounded-2xl border border-border bg-page p-4">
+          <label htmlFor="amount" className="mb-2 block text-sm font-medium text-text-secondary">
+            Amount (NGN)
+          </label>
+          <input
+            id="amount"
+            type="text"
+            inputMode="decimal"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="1000"
+            className="w-full rounded-2xl border border-border bg-white px-4 py-4 font-mono text-2xl text-text-primary outline-none placeholder:text-text-muted focus:border-brand-amber"
+          />
+          <p className="mt-2 text-xs text-text-muted">NGN {formattedAmount}</p>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-border bg-page p-4">
+          <label htmlFor="email" className="mb-2 block text-sm font-medium text-text-secondary">
+            Email for receipt
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@example.com"
+            className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-text-primary outline-none placeholder:text-text-muted focus:border-brand-amber"
+          />
+        </div>
+
+        <div className="mt-4 rounded-2xl bg-subtle p-4 text-sm text-text-secondary">
+          <p className="font-medium text-text-primary">Current wallet balance</p>
+          <p className="mt-1 font-mono text-lg text-text-primary">
+            NGN {walletBalance.toLocaleString('en-NG', { maximumFractionDigits: 2 })}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleFundWallet}
+          disabled={!isScriptReady || isBusy || parsedAmount < 100}
+          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-navy py-4 text-base font-semibold text-white transition hover:bg-navy-medium disabled:cursor-not-allowed disabled:bg-navy/40"
+        >
+          {isBusy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}
+          {isVerifying ? 'Verifying deposit...' : 'Pay with Card'}
+        </button>
+
+        <div className="mt-4 flex items-start gap-2 rounded-2xl border border-border bg-white p-4 text-xs text-text-secondary">
+          <ShieldCheck className="mt-0.5 h-4 w-4 text-success" />
+          <p>
+            This opens a secure Interswitch inline card modal on the same page. No redirect is required for the payment step.
+          </p>
+        </div>
+
+        {message && <p className="mt-4 text-sm font-medium text-text-primary">{message}</p>}
       </div>
-
-      {copyMessage && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-btn text-sm text-success">{copyMessage}</div>
-      )}
-
-      {tab === 'card' && (
-        <Card>
-          <form onSubmit={handleSubmit(onCardSubmit)} className="space-y-4">
-            {error && <div className="p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>}
-            {inlineMessage && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-btn text-sm text-success">{inlineMessage}</div>
-            )}
-
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-text-primary">Amount</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">₦</span>
-                <input
-                  type="number"
-                  min="100"
-                  placeholder="1000"
-                  className={`w-full pl-8 pr-3 py-2.5 rounded-btn border text-text-primary placeholder-text-muted bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber focus:border-transparent transition-colors ${
-                    errors.amount?.message ? 'border-error' : 'border-border'
-                  }`}
-                  {...register('amount')}
-                />
-              </div>
-              {errors.amount?.message && <p className="text-sm text-error">{errors.amount.message}</p>}
-            </div>
-
-            <p className="text-xs text-text-muted">Minimum amount: ₦100</p>
-
-            {amount >= 100 && (
-              <div className="bg-brand-bg rounded-btn p-3 text-sm space-y-1">
-                <p className="text-text-secondary">Fee: 1.5% = ₦{fee.toFixed(2)}</p>
-                <p className="text-text-primary font-medium">You will be charged ₦{total.toFixed(2)}</p>
-              </div>
-            )}
-
-            <div className="bg-brand-bg rounded-btn p-3 space-y-3">
-              <p className="text-sm text-text-secondary">Step 1: Verify OTP before payment initiation.</p>
-              {otpVerified && otpAmount === amount ? (
-                <p className="text-sm text-success">OTP verified. Proceed to pay.</p>
-              ) : (
-                <>
-                  <OTPInput value={otpCode} onChange={setOtpCode} />
-                  <div className="flex gap-2">
-                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => requestPaymentOtp(amount)}>
-                      Request OTP
-                    </Button>
-                    <Button type="button" className="w-full" loading={otpLoading} onClick={() => verifyPaymentOtp()}>
-                      Verify OTP
-                    </Button>
-                  </div>
-                  {otpSessionToken && (
-                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => resendPaymentOtp()}>
-                      Resend OTP
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-
-            <Button type="submit" loading={cardLoading} className="w-full">
-              Pay with Card
-            </Button>
-          </form>
-        </Card>
-      )}
-
-      {tab === 'bank' && (
-        <Card className="space-y-4">
-          <div className="bg-brand-bg rounded-btn p-3">
-            <p className="text-sm text-text-secondary">Dedicated virtual account</p>
-            <p className="text-lg font-semibold text-text-primary mt-1">{virtualAccountNumber}</p>
-            <p className="text-sm text-text-secondary">{virtualBankName}</p>
-          </div>
-
-          <Button type="button" variant="ghost" className="w-full" onClick={() => copyText(virtualAccountNumber, 'Account number copied')}>
-            <Copy className="w-4 h-4" />
-            Copy Account Number
-          </Button>
-
-          <div className="text-sm text-text-secondary space-y-2">
-            <p>1. Open your banking app or USSD banking.</p>
-            <p>2. Transfer to the virtual account above.</p>
-            <p>3. Your wallet updates automatically once payment is confirmed.</p>
-            <p className="text-xs text-text-muted">Checking for new deposits every 30 seconds.</p>
-          </div>
-        </Card>
-      )}
-
-      {tab === 'ussd' && (
-        <Card>
-          <form onSubmit={handleUssdSubmit(onGenerateUssd)} className="space-y-4">
-            {error && <div className="p-3 bg-red-50 border border-red-200 rounded-btn text-sm text-error">{error}</div>}
-
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-text-primary">Amount</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">₦</span>
-                <input
-                  type="number"
-                  min="100"
-                  placeholder="1000"
-                  className={`w-full pl-8 pr-3 py-2.5 rounded-btn border text-text-primary placeholder-text-muted bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber focus:border-transparent transition-colors ${
-                    ussdErrors.amount?.message ? 'border-error' : 'border-border'
-                  }`}
-                  {...registerUssd('amount')}
-                />
-              </div>
-              {ussdErrors.amount?.message && <p className="text-sm text-error">{ussdErrors.amount.message}</p>}
-            </div>
-
-            <div className="bg-brand-bg rounded-btn p-3 space-y-3">
-              <p className="text-sm text-text-secondary">Step 1: Verify OTP before USSD code generation.</p>
-              {otpVerified && otpAmount === ussdAmount ? (
-                <p className="text-sm text-success">OTP verified. You can generate your code.</p>
-              ) : (
-                <>
-                  <OTPInput value={otpCode} onChange={setOtpCode} />
-                  <div className="flex gap-2">
-                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => requestPaymentOtp(ussdAmount)}>
-                      Request OTP
-                    </Button>
-                    <Button type="button" className="w-full" loading={otpLoading} onClick={() => verifyPaymentOtp()}>
-                      Verify OTP
-                    </Button>
-                  </div>
-                  {otpSessionToken && (
-                    <Button type="button" variant="ghost" className="w-full" loading={otpLoading} onClick={() => resendPaymentOtp()}>
-                      Resend OTP
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-
-            <Button type="submit" loading={ussdLoading} className="w-full">
-              Generate Code
-            </Button>
-
-            {ussdCode && (
-              <div className="bg-brand-bg rounded-btn p-3 text-sm space-y-3">
-                <p className="text-text-secondary">Dial this code to pay:</p>
-                <p className="font-mono text-text-primary break-all">{ussdCode}</p>
-                <Button type="button" variant="ghost" className="w-full" onClick={() => copyText(ussdCode, 'USSD code copied')}>
-                  <Copy className="w-4 h-4" />
-                  Copy Code
-                </Button>
-              </div>
-            )}
-
-            <p className="text-xs text-text-muted">We check for confirmed USSD deposits every 30 seconds.</p>
-          </form>
-        </Card>
-      )}
-
-      {tab === 'auto' && (
-        <Card className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-text-primary">Amount (₦)</label>
-            <input
-              type="number"
-              min={100}
-              value={recurringAmount}
-              onChange={(e) => setRecurringAmount(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-text-primary">Frequency</label>
-            <select
-              value={recurringFrequency}
-              onChange={(e) => setRecurringFrequency(e.target.value as 'DAILY' | 'WEEKLY' | 'MONTHLY')}
-              className="w-full px-3 py-2.5 rounded-btn border border-border text-text-primary bg-surface focus:outline-none focus:ring-2 focus:ring-brand-amber"
-            >
-              <option value="DAILY">Daily</option>
-              <option value="WEEKLY">Weekly</option>
-              <option value="MONTHLY">Monthly</option>
-            </select>
-          </div>
-
-          <Button
-            type="button"
-            onClick={setupRecurringDeposit}
-            disabled={!user?.cardTokenizedAt || Number(recurringAmount) < 100}
-            loading={recurringLoading}
-            className="w-full"
-          >
-            Set Up Auto-Deposit
-          </Button>
-          {!user?.cardTokenizedAt && (
-            <p className="text-xs text-text-muted">
-              Auto-Deposit is available after your first successful card payment with tokenized card.
-            </p>
-          )}
-          <div className="space-y-2">
-            {recurringItems.map((item) => (
-              <div key={item.id} className="border border-border rounded-btn p-3">
-                <p className="text-sm text-text-primary">
-                  ₦{Number(item.amount).toFixed(2)} • {item.frequency}
-                </p>
-                <p className="text-xs text-text-muted">Next run: {new Date(item.nextRunAt).toLocaleString()}</p>
-                <Button type="button" variant="ghost" onClick={() => cancelRecurring(item.id)} className="mt-2">
-                  Cancel
-                </Button>
-              </div>
-            ))}
-            {!recurringItems.length && <p className="text-xs text-text-muted">No active recurring deposits.</p>}
-          </div>
-        </Card>
-      )}
-    </div>
+    </main>
   );
 }
