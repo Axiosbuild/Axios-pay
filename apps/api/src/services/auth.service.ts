@@ -26,7 +26,7 @@ export interface RegisterInput {
   email: string;
   username?: string;
   phoneNumber: string;
-  identity: string;
+  identity?: string;
   password: string;
 }
 
