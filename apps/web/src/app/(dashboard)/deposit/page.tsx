@@ -218,9 +218,9 @@ export default function DepositPage() {
       />
 
       <section className="overflow-hidden rounded-card border border-border bg-surface p-6 shadow-sm">
-        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+        <div className="inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-amber">
           <BadgeDollarSign className="h-3.5 w-3.5" />
-          Deposit
+          Fund Wallet
         </div>
 
         <h1 className="mt-4 font-display text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Fund Wallet with Card</h1>
@@ -278,20 +278,22 @@ export default function DepositPage() {
                 NGN {walletBalance.toLocaleString('en-NG', { maximumFractionDigits: 2 })}
               </p>
             </div>
-            <div className="rounded-card border border-emerald-100 bg-emerald-50/70 p-4 text-xs text-emerald-900">
+            <div className="rounded-card border border-border bg-brand-bg p-4 text-xs text-text-secondary">
               <div className="flex items-start gap-2">
-                <ShieldCheck className="mt-0.5 h-4 w-4 text-emerald-600" />
+                <ShieldCheck className="mt-0.5 h-4 w-4 text-success" />
                 <p>
                   This opens a secure Interswitch inline card modal on the same page. No redirect is required for the payment step.
                 </p>
               </div>
             </div>
-            {pendingTxnRef ? (
+            {pendingTxnRef && (
               <div className="rounded-card border border-border bg-page p-4 text-xs text-text-muted">
                 <p className="font-medium text-text-secondary">Last transaction reference</p>
-                <p className="mt-1 break-all font-mono text-text-primary">{pendingTxnRef}</p>
+                <p className="mt-1 break-all font-mono text-text-primary" aria-label="Last transaction reference value">
+                  {pendingTxnRef}
+                </p>
               </div>
-            ) : null}
+            )}
           </aside>
         </div>
 

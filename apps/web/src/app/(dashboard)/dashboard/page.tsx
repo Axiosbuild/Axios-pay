@@ -7,7 +7,6 @@ import { useAuthStore } from '@/store/authStore';
 import { api } from '@/lib/api';
 import { WalletCard } from '@/components/ui/WalletCard';
 import { TransactionRow } from '@/components/ui/TransactionRow';
-import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { RatesGrid } from '@/components/ui/RatesGrid';
 
@@ -70,18 +69,21 @@ export default function DashboardPage() {
     return sorted;
   }, [wallets, fallbackCurrency]);
 
-  const totalBalance = displayWallets.reduce((sum, wallet) => sum + (Number(wallet.balance) || 0), 0);
-  const totalBalanceFormatted = new Intl.NumberFormat('en-US', {
+  const primaryWallet = displayWallets[0];
+  const primaryWalletBalance = Number(primaryWallet?.balance || 0);
+  const primaryWalletBalanceFormatted = new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: primaryWallet?.currency || fallbackCurrency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(totalBalance);
+  }).format(primaryWalletBalance);
 
   return (
     <div className="relative max-w-6xl">
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 rounded-card bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.16),_transparent_42%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_38%)]" />
 
       <div className="mb-8 overflow-hidden rounded-card border border-border bg-surface p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-600">Dashboard</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-success">Dashboard</p>
         <h1 className="mt-3 font-display text-[clamp(1.6rem,4vw,2.6rem)] font-bold text-text-primary">
           {getGreeting()}, {user?.firstName}
         </h1>
@@ -89,17 +91,19 @@ export default function DashboardPage() {
           Monitor balances, track transactions, and move funds quickly across currencies.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <Link href="/deposit">
-            <Button className="w-full sm:w-auto min-h-11">
-              <CreditCard className="h-4 w-4" />
-              Fund Wallet
-            </Button>
+          <Link
+            href="/deposit"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-btn bg-brand-amber px-4 py-2.5 text-base font-medium text-white transition-all duration-200 hover:bg-brand-gold sm:w-auto"
+          >
+            <CreditCard className="h-4 w-4" />
+            Fund Wallet
           </Link>
-          <Link href="/swap">
-            <Button variant="secondary" className="w-full sm:w-auto min-h-11">
-              Swap Now
-              <ArrowUpRight className="h-4 w-4" />
-            </Button>
+          <Link
+            href="/swap"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-btn bg-navy px-4 py-2.5 text-base font-medium text-white transition-all duration-200 hover:bg-navy-medium sm:w-auto"
+          >
+            Swap Now
+            <ArrowUpRight className="h-4 w-4" />
           </Link>
         </div>
       </div>
@@ -107,10 +111,10 @@ export default function DashboardPage() {
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-card border border-border bg-surface p-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs uppercase tracking-wide text-text-muted">Portfolio Balance</p>
+            <p className="text-xs uppercase tracking-wide text-text-muted">Primary Balance</p>
             <TrendingUp className="h-4 w-4 text-emerald-600" />
           </div>
-          <p className="mt-2 text-xl font-semibold text-text-primary">{totalBalanceFormatted}</p>
+          <p className="mt-2 text-xl font-semibold text-text-primary">{primaryWalletBalanceFormatted}</p>
         </div>
         <div className="rounded-card border border-border bg-surface p-4">
           <div className="flex items-center justify-between">
@@ -196,7 +200,7 @@ export default function DashboardPage() {
         <RatesGrid />
       </div>
 
-      <div className="mt-6 rounded-card border border-emerald-100 bg-emerald-50/60 p-4">
+      <div className="mt-6 rounded-card border border-border bg-brand-bg p-4">
         <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-2">Cross-border payments, unlocked</h2>
         <p className="text-sm text-text-secondary">
           Axios Pay partners with local banks across our supported countries and payment rails like Interswitch/Quickteller
