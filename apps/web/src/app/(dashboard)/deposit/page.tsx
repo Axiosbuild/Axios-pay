@@ -79,8 +79,8 @@ export default function DepositPage() {
     defaultValues: { amount: 100 },
   });
 
-  const amount = watch('amount') || 0;
-  const ussdAmount = watchUssd('amount') || 0;
+  const amount = Number(watch('amount')) || 0;
+  const ussdAmount = Number(watchUssd('amount')) || 0;
   const fee = useMemo(() => (amount > 0 ? amount * 0.015 : 0), [amount]);
   const total = useMemo(() => amount + fee, [amount, fee]);
 
