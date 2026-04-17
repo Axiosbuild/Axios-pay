@@ -104,6 +104,19 @@ export default function RegisterPage() {
         phone,
         password: data.password,
       });
+      if (result.status === 204) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('verify_email', step1Data.email);
+          sessionStorage.removeItem('verify_userId');
+          localStorage.removeItem('axiospay_pending_userId');
+        }
+        const params = new URLSearchParams({
+          email: step1Data.email,
+          message: 'Check your email for a verification code',
+        });
+        router.push(`/verify-email?${params.toString()}`);
+        return;
+      }
       const userId = result.data?.userId as string | undefined;
       const emailDelivery = result.data?.emailDelivery as 'sent' | 'deferred' | undefined;
 

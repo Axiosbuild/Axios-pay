@@ -58,8 +58,8 @@ export async function register(
   userId: string;
   message: string;
   requiresVerification: true;
-  emailDelivery: 'sent';
-  emailSent: true;
+  emailDelivery: 'deferred';
+  emailSent: false;
 }> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
@@ -71,8 +71,8 @@ export async function register(
           userId: string;
           message: string;
           requiresVerification: true;
-          emailDelivery: 'sent';
-          emailSent: true;
+          emailDelivery: 'deferred';
+          emailSent: false;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -147,21 +147,26 @@ export async function register(
       },
     });
 
-    const emailDelivery = await sendRegistrationVerificationEmail(
+    sendRegistrationVerificationEmail(
       user.id,
       user.email,
       user.firstName,
       verificationCode,
       verificationLink,
       context
-    );
+    ).catch((error) => {
+      console.warn('Registration verification email task failed unexpectedly', {
+        userId: user.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     const response = {
       userId: user.id,
-      message: 'Verification email sent.',
+      message: 'Check your email for a verification code.',
       requiresVerification: true as const,
-      emailDelivery,
-      emailSent: true as const,
+      emailDelivery: 'deferred' as const,
+      emailSent: false as const,
     };
     if (idempotencyCacheKey) {
       await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
@@ -556,7 +561,7 @@ async function sendRegistrationVerificationEmail(
   otp: string,
   verificationLink: string,
   context?: RegisterContext
-): Promise<'sent'> {
+): Promise<void> {
   try {
     await sendVerificationEmail(email, firstName, otp, verificationLink);
     console.log('Registration verification email sent', {
@@ -564,7 +569,6 @@ async function sendRegistrationVerificationEmail(
       requestId: context?.requestId,
       vercelId: context?.vercelId,
     });
-    return 'sent';
   } catch (error) {
     console.warn('Registration verification email failed', {
       userId,
@@ -572,11 +576,6 @@ async function sendRegistrationVerificationEmail(
       vercelId: context?.vercelId,
       reason: error instanceof Error ? error.message : String(error),
     });
-    const sendFailureError = new Error('VERIFICATION_EMAIL_SEND_FAILED');
-    if (error instanceof Error) {
-      sendFailureError.cause = error;
-    }
-    throw sendFailureError;
   }
 }
 
