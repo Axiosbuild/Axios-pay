@@ -267,7 +267,7 @@ export default function DepositPage() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-btn bg-navy px-6 py-4 text-base font-semibold text-white transition hover:bg-navy-medium disabled:cursor-not-allowed disabled:bg-navy/40"
             >
               {isBusy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}
-              {isVerifying ? 'Verifying deposit...' : 'Pay with Card'}
+              {isVerifying ? 'Verifying deposit...' : 'Pay'}
             </button>
           </div>
 

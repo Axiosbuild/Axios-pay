@@ -8,28 +8,28 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      colors: {
-        brand: {
-          amber: '#C8772A',
-          gold: '#E8A54B',
-          bg: '#FDF3E3',
+        colors: {
+          brand: {
+            amber: '#059669',
+            gold: '#10B981',
+            bg: '#ECFDF5',
+          },
+          navy: {
+            DEFAULT: '#0F172A',
+            medium: '#1E293B',
+          },
+          page: '#F8FAFC',
+          surface: '#FFFFFF',
+          subtle: '#F1F5F9',
+          border: '#E2E8F0',
+          success: '#059669',
+          error: '#DC2626',
+          text: {
+            primary: '#0F172A',
+            secondary: '#334155',
+            muted: '#64748B',
+          },
         },
-        navy: {
-          DEFAULT: '#1A2332',
-          medium: '#2C3A50',
-        },
-        page: '#F9F7F4',
-        surface: '#FFFFFF',
-        subtle: '#F2EFE9',
-        border: '#E5E1DA',
-        success: '#1A7A4A',
-        error: '#C0392B',
-        text: {
-          primary: '#1A2332',
-          secondary: '#5A6474',
-          muted: '#9AA3AE',
-        },
-      },
       fontFamily: {
         display: ['Playfair Display', 'serif'],
         body: ['DM Sans', 'sans-serif'],
