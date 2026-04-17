@@ -121,7 +121,7 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
             <span className="text-text-muted">Phone</span>
-            <span className="text-text-primary">{user?.phone}</span>
+            <span className="text-text-primary">{user?.phoneNumber}</span>
           </div>
           <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
             <span className="text-text-muted">Country</span>

@@ -1,6 +1,5 @@
 import { env } from '../config/env';
 import { sendMail } from './mail.service';
-import { buildVerificationEmailTemplate } from './templates/verification-email.template';
 
 async function sendTemplatedEmail(options: {
   to: string;
@@ -54,27 +53,6 @@ export async function sendEmailOTP(
       </div>
     `,
     text: `Hi ${firstName},\n\nVerify your Axios Pay email.\n\nYour 6-digit code: ${otp}\n\n${verificationLink ? `Or click this link: ${verificationLink}\n\n` : ''}This code expires in 10 minutes.\n\nIf you didn't create an account, ignore this email.\n\nAxios Pay — info@axiospay.space`,
-  });
-}
-
-export async function sendVerificationEmail(
-  to: string,
-  firstName: string,
-  verificationCode: string,
-  verificationLink: string
-): Promise<void> {
-  const template = buildVerificationEmailTemplate({
-    firstName,
-    verificationCode,
-    verificationLink,
-    expiryMinutes: env.VERIFICATION_TOKEN_TTL_MINUTES,
-  });
-
-  await sendTemplatedEmail({
-    to,
-    subject: template.subject,
-    html: template.html,
-    text: template.text,
   });
 }
 

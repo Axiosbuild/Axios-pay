@@ -4,7 +4,9 @@ import { persist } from 'zustand/middleware';
 export interface User {
   id: string;
   email: string;
-  phone: string;
+  phoneNumber: string;
+  username?: string | null;
+  identity?: string | null;
   firstName: string;
   lastName: string;
   nationality: string;
@@ -12,8 +14,9 @@ export interface User {
   idVerificationStatus?: string;
   idVerificationFailureReason?: string | null;
   idVerifiedAt?: string | null;
-  isEmailVerified: boolean;
   isPhoneVerified: boolean;
+  termsAccepted?: boolean;
+  termsAcceptedAt?: string | null;
   isPinSet?: boolean;
   isTwoFactorEnabled?: boolean;
   isFrozen?: boolean;

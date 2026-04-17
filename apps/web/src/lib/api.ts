@@ -143,20 +143,13 @@ apiClient.interceptors.response.use(
 export const api = {
   auth: {
     register: (data: unknown, config?: AxiosRequestConfig) => apiClient.post('/auth/register', data, config),
-    verifyEmail: (data: unknown) => apiClient.post('/auth/verify-email', data),
-    verifyEmailLink: (token: string, userId: string) =>
-      apiClient.get('/auth/verify-email-link', { params: { token, userId } }),
-    verifyPhone: (data: unknown) => apiClient.post('/auth/verify-phone', data),
+    acceptTerms: (data: unknown) => apiClient.post('/auth/accept-terms', data),
     login: (data: unknown) => apiClient.post('/auth/login', data),
     refresh: (data: unknown) => apiClient.post('/auth/refresh', data),
     logout: (data: unknown) => apiClient.post('/auth/logout', data),
     forgotPassword: (data: unknown) => apiClient.post('/auth/forgot-password', data),
     resetPassword: (data: unknown) => apiClient.post('/auth/reset-password', data),
-    resendOTP: (data: unknown) => apiClient.post('/auth/resend-otp', data),
     verify2FA: (data: unknown) => apiClient.post('/auth/2fa/verify', data),
-    sendVerification: (data: unknown) => apiClient.post('/auth/send-verification', data),
-    verifyCode: (data: unknown) => apiClient.post('/auth/verify-code', data),
-    verifyEmailToken: (data: unknown) => apiClient.post('/auth/verify-email-token', data),
   },
   users: {
     getMe: () => apiClient.get('/users/me'),

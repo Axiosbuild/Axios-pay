@@ -13,36 +13,21 @@ import {
   storeVerificationValue,
   verifyOTP,
 } from './otp.service';
-import { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetOTP, sendLoginNotificationEmail } from './email.service';
+import { sendWelcomeEmail, sendPasswordResetOTP, sendLoginNotificationEmail } from './email.service';
 import * as twoFactorService from './twoFactor.service';
-import {
-  buildVerificationExpiry,
-  generateVerificationCode,
-  generateVerificationToken,
-  hashVerificationValue,
-} from '../utils/verification';
-
-const NATIONALITY_CURRENCY_MAP: Record<string, string> = {
-  NG: 'NGN',
-  UG: 'UGX',
-  KE: 'KES',
-  GH: 'GHS',
-  ZA: 'ZAR',
-};
 
 const RESET_OTP_TTL = 900; // 15 minutes
 const REGISTER_IDEMPOTENCY_TTL_SECONDS = 60 * 10;
+const TERMS_ONBOARDING_TTL_SECONDS = 60 * 60 * 24;
 
 const DUMMY_HASH = '$2b$12$dummyhashfortimingequalitywhenuserdoesnotexist00000000000';
 
 export interface RegisterInput {
   email: string;
-  phone: string;
+  username: string;
+  phoneNumber: string;
+  identity: string;
   password: string;
-  firstName: string;
-  lastName: string;
-  nationality: string;
-  nationalId?: string;
 }
 
 interface RegisterContext {
@@ -56,10 +41,9 @@ export async function register(
   context?: RegisterContext
 ): Promise<{
   userId: string;
+  onboardingToken: string;
   message: string;
-  requiresVerification: true;
-  emailDelivery: 'deferred';
-  emailSent: false;
+  requiresTermsAcceptance: true;
 }> {
   const idempotencyKey = context?.idempotencyKey?.trim();
   const idempotencyCacheKey = idempotencyKey ? `idempotency:register:${idempotencyKey}` : null;
@@ -69,10 +53,9 @@ export async function register(
       try {
         return JSON.parse(cachedResponse) as {
           userId: string;
+          onboardingToken: string;
           message: string;
-          requiresVerification: true;
-          emailDelivery: 'deferred';
-          emailSent: false;
+          requiresTermsAcceptance: true;
         };
       } catch {
         await redis.del(idempotencyCacheKey);
@@ -82,48 +65,47 @@ export async function register(
 
   try {
     const normalizedEmail = input.email.trim().toLowerCase();
+    const normalizedUsername = normalizeUsername(input.username);
+    const normalizedPhoneNumber = normalizePhoneNumber(input.phoneNumber);
+    const identity = input.identity.trim();
+    const { firstName, lastName } = deriveNameFromUsername(normalizedUsername);
     const passwordHash = await bcrypt.hash(input.password, 12);
-    const nativeCurrency = NATIONALITY_CURRENCY_MAP[input.nationality.toUpperCase()];
 
     const user = await prisma.$transaction(
       async (tx) => {
         const existingUser = await tx.user.findFirst({
           where: {
-              OR: [
-                { email: normalizedEmail },
-                { phone: input.phone },
-                ...(input.nationalId ? [{ nationalIdNumber: input.nationalId }] : []),
-              ],
+            OR: [
+              { email: normalizedEmail },
+              { username: normalizedUsername },
+              { phoneNumber: normalizedPhoneNumber },
+            ],
           },
-          select: { email: true, phone: true, nationalIdNumber: true },
+          select: { email: true, username: true, phoneNumber: true },
         });
 
         if (existingUser?.email === normalizedEmail) {
           throw new Error('EMAIL_EXISTS');
         }
-        if (existingUser?.phone === input.phone) {
-          throw new Error('PHONE_EXISTS');
+        if (existingUser?.username === normalizedUsername) {
+          throw new Error('USERNAME_EXISTS');
         }
-        if (input.nationalId && existingUser?.nationalIdNumber === input.nationalId) {
-          throw new Error('NATIONAL_ID_EXISTS');
+        if (existingUser?.phoneNumber === normalizedPhoneNumber) {
+          throw new Error('PHONE_EXISTS');
         }
 
         return tx.user.create({
           data: {
             email: normalizedEmail,
-            phone: input.phone,
+            username: normalizedUsername,
+            phoneNumber: normalizedPhoneNumber,
+            identity,
             passwordHash,
-            firstName: input.firstName,
-            lastName: input.lastName,
-            nationality: input.nationality.toUpperCase(),
-            nationalIdNumber: input.nationalId,
+            firstName,
+            lastName,
+            nationality: deriveNationalityFromPhoneNumber(normalizedPhoneNumber),
             wallets: {
-              create: [
-                { currency: 'NGN', balance: 0 },
-                ...(nativeCurrency && nativeCurrency !== 'NGN'
-                  ? [{ currency: nativeCurrency, balance: 0 }]
-                  : []),
-              ],
+              create: [{ currency: 'NGN', balance: 0 }],
             },
           },
         });
@@ -131,43 +113,24 @@ export async function register(
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
 
-    const verificationToken = generateVerificationToken();
-    const verificationCode = generateVerificationCode();
-    const verificationExpiry = buildVerificationExpiry(env.VERIFICATION_TOKEN_TTL_MINUTES);
-    const verificationTokenHash = hashVerificationValue(verificationToken);
-    const verificationCodeHash = hashVerificationValue(verificationCode);
-    const verificationLink = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        verificationTokenHash,
-        verificationCodeHash,
-        verificationCodeExpiry: verificationExpiry,
-      },
-    });
-
-    sendRegistrationVerificationEmail(
-      user.id,
-      user.email,
-      user.firstName,
-      verificationCode,
-      verificationLink,
-      context
-    ).catch((error) => {
-      console.warn('Registration verification email task failed unexpectedly', {
+    sendWelcomeEmail(user.email, user.firstName).catch((error) => {
+      console.warn('Welcome email task failed unexpectedly', {
         userId: user.id,
         reason: error instanceof Error ? error.message : String(error),
       });
     });
 
+    // 48-char token provides high entropy while remaining URL-safe for onboarding redirects.
+    const onboardingToken = nanoid(48);
+    await redis.set(`terms:onboarding:${onboardingToken}`, user.id, "EX", TERMS_ONBOARDING_TTL_SECONDS);
+
     const response = {
       userId: user.id,
-      message: 'Check your email for a verification code.',
-      requiresVerification: true as const,
-      emailDelivery: 'deferred' as const,
-      emailSent: false as const,
+      onboardingToken,
+      message: 'Registration successful. Please review and accept the Terms and Conditions.',
+      requiresTermsAcceptance: true as const,
     };
+
     if (idempotencyCacheKey) {
       await redis.set(idempotencyCacheKey, JSON.stringify(response), 'EX', REGISTER_IDEMPOTENCY_TTL_SECONDS);
     }
@@ -175,7 +138,7 @@ export async function register(
   } catch (error) {
     const mappedErrorCode = mapRegisterErrorCode(error);
     if (mappedErrorCode) {
-      if (!['EMAIL_EXISTS', 'PHONE_EXISTS', 'NATIONAL_ID_EXISTS'].includes(mappedErrorCode)) {
+      if (!['EMAIL_EXISTS', 'USERNAME_EXISTS', 'PHONE_EXISTS'].includes(mappedErrorCode)) {
         console.error('Registration failed with handled database error', {
           errorCode: mappedErrorCode,
           requestId: context?.requestId,
@@ -196,59 +159,29 @@ export async function register(
   }
 }
 
-export async function verifyEmail(input: {
-  token?: string;
-  email?: string;
-  code?: string;
-  userId?: string;
-  otp?: string;
-}): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
-  if (input.token) {
-    return verifyEmailByToken(input.token);
+export async function acceptTerms(onboardingToken: string, accepted: boolean): Promise<void> {
+  if (!accepted) {
+    throw new Error('TERMS_NOT_ACCEPTED');
   }
 
-  if (input.email && input.code) {
-    return verifyEmailByCode(input.email, input.code);
+  const userId = await redis.get(`terms:onboarding:${onboardingToken}`);
+  if (!userId) {
+    throw new Error('TERMS_ACCEPTANCE_SESSION_INVALID');
   }
-
-  if (input.userId && input.otp) {
-    const user = await prisma.user.findUnique({ where: { id: input.userId } });
-    if (!user) throw new Error('USER_NOT_FOUND');
-    return verifyEmailByCode(user.email, input.otp);
-  }
-
-  throw new Error('INVALID_PARAMETERS');
-}
-
-export async function verifyEmailLink(
-  userId: string,
-  token: string
-): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
-  const result = await verifyEmailByToken(token);
-  if (result.userId !== userId) {
-    throw new Error('INVALID_TOKEN');
-  }
-  return result;
-}
-
-export async function verifyPhone(userId: string, otp: string): Promise<{ verified: boolean }> {
-  await verifyOTP(`phone:${userId}`, otp);
-
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new Error('USER_NOT_FOUND');
 
   await prisma.user.update({
     where: { id: userId },
-    data: { isPhoneVerified: true },
+    data: {
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
+    },
   });
 
-  await sendWelcomeEmail(user.email, user.firstName);
-
-  return { verified: true };
+  await redis.del(`terms:onboarding:${onboardingToken}`);
 }
 
 export interface LoginInput {
-  identifier: string; // email or phone
+  identifier: string; // username or phone number
   password: string;
   userAgent?: string;
   ipAddress?: string;
@@ -261,9 +194,16 @@ export async function login(input: LoginInput): Promise<{
   requires2FA?: boolean;
   tempToken?: string;
 }> {
+  const normalizedIdentifier = input.identifier.trim();
+  const normalizedUsername = normalizeUsername(normalizedIdentifier);
+  const normalizedPhoneNumber = tryNormalizePhoneNumber(normalizedIdentifier);
+
   const user = await prisma.user.findFirst({
     where: {
-      OR: [{ email: input.identifier }, { phone: input.identifier }],
+      OR: [
+        { username: normalizedUsername },
+        ...(normalizedPhoneNumber ? [{ phoneNumber: normalizedPhoneNumber }] : []),
+      ],
     },
     include: { wallets: true },
   });
@@ -276,7 +216,7 @@ export async function login(input: LoginInput): Promise<{
   const valid = await bcrypt.compare(input.password, user.passwordHash);
   if (!valid) throw new Error('INVALID_CREDENTIALS');
 
-  if (!user.isEmailVerified) throw new Error('EMAIL_NOT_VERIFIED');
+  if (!user.termsAccepted) throw new Error('TERMS_NOT_ACCEPTED');
 
   if (user.isFrozen) throw new Error('ACCOUNT_FROZEN');
 
@@ -429,164 +369,58 @@ export async function resetPassword(email: string, otp: string, newPassword: str
   await deleteVerificationValue(`reset-email:${normalizedEmail}`);
 }
 
-export async function resendOTP(input: { userId?: string; email?: string }): Promise<{ userId: string }> {
-  const user = input.userId
-    ? await prisma.user.findUnique({ where: { id: input.userId } })
-    : input.email
-      ? await prisma.user.findUnique({ where: { email: input.email } })
-      : null;
-
-  if (!user) throw new Error('USER_NOT_FOUND');
-  if (user.isEmailVerified) throw new Error('EMAIL_ALREADY_VERIFIED');
-
-  const verificationToken = generateVerificationToken();
-  const verificationCode = generateVerificationCode();
-  const verificationExpiry = buildVerificationExpiry(env.VERIFICATION_TOKEN_TTL_MINUTES);
-  const verificationLink = `${env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      verificationTokenHash: hashVerificationValue(verificationToken),
-      verificationCodeHash: hashVerificationValue(verificationCode),
-      verificationCodeExpiry: verificationExpiry,
-    },
-  });
-
-  try {
-    await sendVerificationEmail(user.email, user.firstName, verificationCode, verificationLink);
-    console.log('Resend verification email sent', { userId: user.id });
-  } catch (error) {
-    const sendFailureError = new Error('VERIFICATION_EMAIL_SEND_FAILED');
-    if (error instanceof Error) {
-      sendFailureError.cause = error;
-    }
-    throw sendFailureError;
-  }
-
-  return { userId: user.id };
-}
-
-export async function resendVerification(input: { userId?: string; email?: string }): Promise<{ userId: string }> {
-  return resendOTP(input);
-}
-
-// POST /api/v1/auth/send-verification — resend by email
-export async function sendVerification(email: string): Promise<{ message: string; userId: string }> {
-  const { userId } = await resendOTP({ email });
-  return { message: 'Verification email sent', userId };
-}
-
-// POST /api/v1/auth/verify-code — verify 6-digit code by email
-export async function verifyCode(email: string, code: string): Promise<{ verified: boolean }> {
-  const result = await verifyEmailByCode(email, code);
-  return { verified: result.verified };
-}
-
-// POST /api/v1/auth/verify-email-token — verify opaque token from email link
-export async function verifyEmailToken(token: string): Promise<{ verified: boolean; userId: string }> {
-  const result = await verifyEmailByToken(token);
-  return { verified: result.verified, userId: result.userId };
-}
-
-async function verifyEmailByToken(token: string): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
-  const tokenHash = hashVerificationValue(token);
-  const user = await prisma.user.findFirst({
-    where: { verificationTokenHash: tokenHash },
-  });
-
-  if (!user) {
-    throw new Error('INVALID_TOKEN');
-  }
-
-  if (user.isEmailVerified) {
-    return { verified: true, userId: user.id, alreadyVerified: true };
-  }
-
-  if (!user.verificationCodeExpiry || user.verificationCodeExpiry < new Date()) {
-    throw new Error('INVALID_TOKEN');
-  }
-
-  await markEmailVerified(user.id, user.email, user.firstName);
-  return { verified: true, userId: user.id };
-}
-
-async function verifyEmailByCode(
-  email: string,
-  code: string
-): Promise<{ verified: boolean; userId: string; alreadyVerified?: boolean }> {
-  const normalizedEmail = email.trim().toLowerCase();
-  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  if (!user) throw new Error('USER_NOT_FOUND');
-  if (user.isEmailVerified) {
-    return { verified: true, userId: user.id, alreadyVerified: true };
-  }
-
-  if (!user.verificationCodeHash || !user.verificationCodeExpiry) {
-    throw new Error('OTP_EXPIRED');
-  }
-
-  if (user.verificationCodeExpiry < new Date()) {
-    throw new Error('OTP_EXPIRED');
-  }
-
-  if (hashVerificationValue(code) !== user.verificationCodeHash) {
-    throw new Error('OTP_INVALID');
-  }
-
-  await markEmailVerified(user.id, user.email, user.firstName);
-  return { verified: true, userId: user.id };
-}
-
-async function markEmailVerified(userId: string, email: string, firstName: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      isEmailVerified: true,
-      isPhoneVerified: true,
-      verificationTokenHash: null,
-      verificationCodeHash: null,
-      verificationCodeExpiry: null,
-    },
-  });
-
-  await deleteVerificationValue(`otp:email:${userId}`);
-  await sendWelcomeEmail(email, firstName);
-}
-
-async function sendRegistrationVerificationEmail(
-  userId: string,
-  email: string,
-  firstName: string,
-  otp: string,
-  verificationLink: string,
-  context?: RegisterContext
-): Promise<void> {
-  try {
-    await sendVerificationEmail(email, firstName, otp, verificationLink);
-    console.log('Registration verification email sent', {
-      userId,
-      requestId: context?.requestId,
-      vercelId: context?.vercelId,
-    });
-  } catch (error) {
-    console.warn('Registration verification email failed', {
-      userId,
-      requestId: context?.requestId,
-      vercelId: context?.vercelId,
-      reason: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
 function signAccessToken(userId: string): string {
   return jwt.sign({ sub: userId, type: 'access' }, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_EXPIRY,
   } as jwt.SignOptions);
 }
 
+function normalizeUsername(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizePhoneNumber(value: string): string {
+  const compact = value.replace(/[\s()-]/g, '');
+  if (!/^\+[1-9]\d{6,14}$/.test(compact)) {
+    throw new Error('INVALID_PHONE_NUMBER');
+  }
+  return compact;
+}
+
+function tryNormalizePhoneNumber(value: string): string | null {
+  try {
+    return normalizePhoneNumber(value);
+  } catch {
+    return null;
+  }
+}
+
+
+function deriveNameFromUsername(username: string): { firstName: string; lastName: string } {
+  const segments = username.split(/[._-]+/).filter(Boolean);
+  const firstName = formatNameSegment(segments[0] || 'User');
+  const lastName = formatNameSegment(segments[1] || 'Member');
+  return { firstName, lastName };
+}
+
+function formatNameSegment(value: string): string {
+  const safeValue = value.replace(/[^a-zA-Z0-9]/g, '');
+  const normalized = safeValue || 'User';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+}
+
+function deriveNationalityFromPhoneNumber(phoneNumber: string): string {
+  if (phoneNumber.startsWith('+234')) return 'NG';
+  if (phoneNumber.startsWith('+256')) return 'UG';
+  if (phoneNumber.startsWith('+254')) return 'KE';
+  if (phoneNumber.startsWith('+233')) return 'GH';
+  if (phoneNumber.startsWith('+27')) return 'ZA';
+
+  throw new Error('UNSUPPORTED_PHONE_COUNTRY');
+}
+
 function mapRegisterErrorCode(error: unknown): string | null {
-  if (error instanceof Error && ['EMAIL_EXISTS', 'PHONE_EXISTS', 'NATIONAL_ID_EXISTS'].includes(error.message)) {
+  if (error instanceof Error && ['EMAIL_EXISTS', 'USERNAME_EXISTS', 'PHONE_EXISTS', 'INVALID_PHONE_NUMBER', 'UNSUPPORTED_PHONE_COUNTRY'].includes(error.message)) {
     return error.message;
   }
 
@@ -596,8 +430,8 @@ function mapRegisterErrorCode(error: unknown): string | null {
   ) {
     const target = Array.isArray(error.meta?.target) ? error.meta?.target.map(String) : [];
     if (target.includes('email')) return 'EMAIL_EXISTS';
+    if (target.includes('username')) return 'USERNAME_EXISTS';
     if (target.includes('phone')) return 'PHONE_EXISTS';
-    if (target.includes('nationalIdNumber')) return 'NATIONAL_ID_EXISTS';
     return 'DUPLICATE_RESOURCE';
   }
 
@@ -605,8 +439,8 @@ function mapRegisterErrorCode(error: unknown): string | null {
   if (pgError?.code === '23505') {
     const detail = `${pgError.detail || ''} ${pgError.constraint || ''}`.toLowerCase();
     if (detail.includes('email')) return 'EMAIL_EXISTS';
+    if (detail.includes('username')) return 'USERNAME_EXISTS';
     if (detail.includes('phone')) return 'PHONE_EXISTS';
-    if (detail.includes('nationalidnumber') || detail.includes('national id')) return 'NATIONAL_ID_EXISTS';
     return 'DUPLICATE_RESOURCE';
   }
 

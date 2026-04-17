@@ -5,33 +5,20 @@ import type { RegisterInput } from '../services/auth.service';
 
 const registerSchema: z.ZodType<RegisterInput> = z.object({
   email: z.string().email(),
-  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/),
+  username: z
+    .string()
+    .trim()
+    .min(3)
+    .max(30)
+    .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{1,28}[a-zA-Z0-9])?$/, 'Username must start/end with a letter or number.'),
+  phoneNumber: z.string().regex(/^\+[1-9]\d{6,14}$/),
+  identity: z.string().trim().min(2).max(120),
   password: z.string().min(8),
-  firstName: z.string().min(1).max(50),
-  lastName: z.string().min(1).max(50),
-  nationality: z.enum(['NG', 'UG', 'KE', 'GH', 'ZA']),
-  nationalId: z.string().min(1).optional(),
 });
 
-const verifyEmailSchema = z.object({
-  token: z.string().min(1).optional(),
-  email: z.string().email().optional(),
-  code: z.string().length(6).optional(),
-  userId: z.string().min(1).optional(),
-  otp: z.string().length(6).optional(),
-}).superRefine((value, ctx) => {
-  if (value.token) return;
-  if (value.email && value.code) return;
-  if (value.userId && value.otp) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    message: 'Provide token OR email+code OR userId+otp.',
-  });
-});
-
-const verifyPhoneSchema = z.object({
-  userId: z.string().min(1),
-  otp: z.string().length(6),
+const acceptTermsSchema = z.object({
+  onboardingToken: z.string().min(1),
+  accepted: z.boolean(),
 });
 
 const loginSchema = z.object({
@@ -53,34 +40,6 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
-const resendOTPSchema = z.object({
-  userId: z.string().min(1).optional(),
-  email: z.string().email().optional(),
-}).refine((data) => Boolean(data.userId || data.email), {
-  message: 'Provide userId or email to resend verification',
-});
-
-const verifyEmailLinkSchema = z.object({
-  token: z.string().min(1),
-  userId: z.string().min(1),
-});
-
-const sendVerificationSchema = z.object({
-  email: z.string().email(),
-});
-
-const verifyCodeSchema = z.object({
-  email: z.string().email(),
-  code: z.string().length(6),
-});
-
-const verifyEmailTokenSchema = z.object({
-  token: z.string().min(1),
-});
-const verifyEmailTokenQuerySchema = z.object({
-  token: z.string().min(1),
-});
-
 const verify2FASchema = z.object({
   tempToken: z.string().min(1),
   token: z.string().length(6),
@@ -100,10 +59,11 @@ export async function register(req: Request, res: Response, next: NextFunction):
     res.status(201).json({
       success: true,
       message: result.message,
-      userId: result.userId,
-      requiresVerification: result.requiresVerification,
-      emailDelivery: result.emailDelivery,
-      emailSent: result.emailSent,
+      data: {
+        userId: result.userId,
+        requiresTermsAcceptance: result.requiresTermsAcceptance,
+        onboardingToken: result.onboardingToken,
+      },
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -114,53 +74,14 @@ export async function register(req: Request, res: Response, next: NextFunction):
   }
 }
 
-export async function verifyEmailLink(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function acceptTerms(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { token, userId } = verifyEmailLinkSchema.parse(req.query);
-    const result = await authService.verifyEmailLink(userId, token);
-    res.json(result);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
-export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const data = verifyEmailSchema.parse(req.body);
-    await authService.verifyEmail(data);
-    res.json({ success: true, message: 'Email verified successfully.' });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
-export async function verifyEmailFromQuery(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { token } = verifyEmailTokenQuerySchema.parse(req.query);
-    await authService.verifyEmail({ token });
-    res.json({ success: true, message: 'Email verified successfully.' });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
-export async function verifyPhone(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const data = verifyPhoneSchema.parse(req.body);
-    const result = await authService.verifyPhone(data.userId, data.otp);
-    res.json(result);
+    const { onboardingToken, accepted } = acceptTermsSchema.parse(req.body);
+    await authService.acceptTerms(onboardingToken, accepted);
+    res.json({
+      success: true,
+      message: 'Terms and Conditions accepted successfully.',
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
@@ -245,20 +166,6 @@ export async function resetPassword(req: Request, res: Response, next: NextFunct
   }
 }
 
-export async function resendOTP(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const data = resendOTPSchema.parse(req.body);
-    const result = await authService.resendOTP(data);
-    res.json({ success: true, message: 'Verification email sent.', userId: result.userId });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
 export async function verify2FALogin(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const data = verify2FASchema.parse(req.body);
@@ -269,62 +176,6 @@ export async function verify2FALogin(req: Request, res: Response, next: NextFunc
       req.ip
     );
     res.json(result);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
-export async function sendVerification(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { email } = sendVerificationSchema.parse(req.body);
-    const result = await authService.sendVerification(email);
-    res.json({ success: true, message: result.message + '.', userId: result.userId });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
-export async function verifyCode(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { email, code } = verifyCodeSchema.parse(req.body);
-    await authService.verifyCode(email, code);
-    res.json({ success: true, message: 'Email verified successfully.' });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
-export async function verifyEmailToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { token } = verifyEmailTokenSchema.parse(req.body);
-    const result = await authService.verifyEmailToken(token);
-    res.json({ success: true, message: 'Email verified successfully.', userId: result.userId });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });
-      return;
-    }
-    next(err);
-  }
-}
-
-export async function resendVerification(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const data = resendOTPSchema.parse(req.body);
-    const result = await authService.resendVerification(data);
-    res.json({ success: true, message: 'Verification email sent.', userId: result.userId });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'VALIDATION_ERROR', details: err.errors });

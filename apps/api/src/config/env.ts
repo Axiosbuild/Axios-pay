@@ -36,7 +36,6 @@ const envSchema = z.object({
     .url()
     .default('http://localhost:3000')
     .transform((value) => new URL(value).origin),
-  VERIFICATION_TOKEN_TTL_MINUTES: z.coerce.number().int().min(10).max(30).default(15),
   ENCRYPTION_KEY: z.string().min(32).default(crypto.randomBytes(32).toString('hex')),
   CRON_ENABLED: z.coerce.boolean().default(true),
   ADMIN_EMAIL: z.string().email().default('admin@example.com'),
